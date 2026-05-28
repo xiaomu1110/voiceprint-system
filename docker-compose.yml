@@ -1,0 +1,12 @@
+services:
+  voiceprint:
+    build: .
+    container_name: voiceprint-system
+    volumes:
+      - ./data:/app/data
+      - ./data/models:/app/data/models
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

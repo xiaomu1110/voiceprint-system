@@ -1,0 +1,53 @@
+# ========================================
+# Voiceprint Recognition System - Git Ignore
+# ========================================
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Data files
+data/voiceprints.db
+*.db
+*.sqlite3
+data/audio_files/*
+!data/audio_files/.gitkeep
+data/models/*
+!data/models/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temp
+*.tmp
+*.temp
+*.bak
+*.old
+
+# Docker
+.dockerignore
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,140 @@
+# Voiceprint Recognition System - AI Agent Context
+
+## Project Overview
+
+基于ECAPA-TDNN声纹识别模型的配电柜操作人员身份认证系统。系统使用tkinter构建GUI界面，SQLite存储数据，SpeechBrain进行声纹特征提取和比对。
+
+## Tech Stack
+
+| Component | Technology | Description |
+|-----------|------------|-------------|
+| **Frontend** | tkinter + ttk | Desktop GUI |
+| **Backend** | Python 3.11 | Core business logic |
+| **Voiceprint** | SpeechBrain ECAPA-TDNN | Pre-trained model, EER 0.170% |
+| **Audio** | soundfile + scipy | Audio loading, conversion, resampling |
+| **Deep Learning** | PyTorch | Model inference |
+| **Database** | SQLite | Users, voiceprints, logs |
+| **Container** | Docker | Deployment |
+
+## Project Structure
+
+```
+voiceprint-system/
+├── app.py                  # Main entry point
+├── config.py               # Configuration
+├── database.py             # Database management
+├── voiceprint.py           # Voiceprint processing core
+├── test_system.py          # System test script
+├── requirements.txt        # Dependencies
+├── Dockerfile              # Docker configuration
+├── docker-compose.yml      # Docker Compose
+├── .gitignore              # Git ignore rules
+├── .agent                  # AI Agent context (this file)
+├── ui/                     # Frontend modules
+│   ├── __init__.py
+│   ├── main_window.py      # Main window
+│   ├── register_frame.py   # User management
+│   ├── verify_frame.py     # Verification
+│   └── log_frame.py        # Logs
+└── data/                   # Data storage
+    ├── audio_files/        # Audio files
+    ├── models/             # Model files
+    └── voiceprints.db      # Database
+```
+
+## Core Modules
+
+### config.py
+- `BASE_DIR`: Project root directory
+- `DATA_DIR`: Data directory
+- `DB_PATH`: Database path
+- `SIMILARITY_THRESHOLD`: Similarity threshold (default 0.75)
+- `SAMPLE_RATE`: Sample rate (16000Hz)
+- `EMBEDDING_DIM`: Embedding dimension (192)
+
+### database.py
+- `DatabaseManager`: Database manager
+  - `add_user()`: Add user
+  - `delete_user()`: Delete user (cascade voiceprints)
+  - `add_voiceprint()`: Add voiceprint
+  - `get_voiceprints()`: Get user voiceprints
+  - `add_verify_log()`: Add verification log
+
+### voiceprint.py
+- `VoiceprintExtractor`: Feature extractor
+  - `load_audio()`: Load audio (multi-format)
+  - `extract_embedding()`: Extract 192-dim vector
+  - `compute_similarity()`: Cosine similarity
+  - `verify_speaker()`: Verify speaker identity
+
+- `VoiceprintDatabase`: Voiceprint database
+  - `register_voiceprint()`: Register voiceprint
+  - `verify_speaker()`: Identify speaker
+  - `verify_speaker_by_id()`: Verify specific user
+
+## Development Guidelines
+
+### Code Style
+- Python 3.11+ syntax
+- PEP 8 compliance
+- Chinese comments and docstrings
+- Functions must have docstrings
+
+### Naming Conventions
+- Files: lowercase with underscores (e.g., `voiceprint.py`)
+- Classes: PascalCase (e.g., `VoiceprintExtractor`)
+- Functions: snake_case (e.g., `extract_embedding`)
+- Constants: UPPER_SNAKE_CASE (e.g., `SIMILARITY_THRESHOLD`)
+
+## Common Commands
+
+### Docker Deployment
+```bash
+# Build and start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+```
+
+### Local Development
+```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate (Windows)
+.venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run
+python app.py
+```
+
+### Testing
+```bash
+python test_system.py
+```
+
+## Notes
+
+- First run auto-downloads ECAPA-TDNN model (~100MB)
+- Model stored in `data/models/ecapa_tdnn/`
+- Supports CUDA and CPU inference
+- Recommended audio: WAV, 3-10 seconds, 16kHz
+
+## Development Roadmap
+
+- [ ] REST API endpoints
+- [ ] Web management interface
+- [ ] Real-time audio recording
+- [ ] Batch registration
+- [ ] User permission management
+
+---
+
+*Last updated: 2026-05-28*
