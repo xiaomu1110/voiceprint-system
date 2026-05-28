@@ -1,5 +1,8 @@
 """
 数据库管理模块 - 声纹识别系统
+
+使用 SQLite 存储用户信息、声纹特征向量和验证日志。
+声纹特征以 numpy float32 数组的二进制形式存储在 BLOB 字段中。
 """
 import sqlite3
 import numpy as np
@@ -134,6 +137,34 @@ class DatabaseManager:
         conn.commit()
         conn.close()
         return vp_id
+
+    def replace_voiceprint(self, user_id, embedding, audio_path=None):
+        """删除用户旧声纹，存入新的单一声纹"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # 删除旧的音频文件
+        cursor.execute("SELECT audio_path FROM voiceprints WHERE user_id = ?", (user_id,))
+        for row in cursor.fetchall():
+            if row['audio_path'] and os.path.exists(row['audio_path']):
+                try:
+                    os.remove(row['audio_path'])
+                except:
+                    pass
+
+        # 删除旧声纹记录
+        cursor.execute("DELETE FROM voiceprints WHERE user_id = ?", (user_id,))
+
+        # 存入新声纹
+        embedding_bytes = embedding.tobytes()
+        cursor.execute(
+            "INSERT INTO voiceprints (user_id, embedding, audio_path) VALUES (?, ?, ?)",
+            (user_id, embedding_bytes, audio_path)
+        )
+        vp_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return vp_id
     
     def get_voiceprints(self, user_id):
         """获取用户的所有声纹特征"""
@@ -217,35 +248,3 @@ class DatabaseManager:
         cursor.execute("DELETE FROM verify_logs")
         conn.commit()
         conn.close()
-
-
-# 测试代码
-if __name__ == "__main__":
-    db = DatabaseManager()
-    
-    # 测试添加用户
-    user_id = db.add_user("张三", "配电运维部")
-    print(f"添加用户成功，ID: {user_id}")
-    
-    # 测试获取用户
-    user = db.get_user(user_id)
-    print(f"获取用户: {user}")
-    
-    # 测试添加声纹
-    embedding = np.random.randn(192).astype(np.float32)
-    vp_id = db.add_voiceprint(user_id, embedding, "test.wav")
-    print(f"添加声纹成功，ID: {vp_id}")
-    
-    # 测试获取声纹
-    voiceprints = db.get_voiceprints(user_id)
-    print(f"获取声纹: {len(voiceprints)} 条记录")
-    
-    # 测试获取所有用户
-    users = db.get_all_users()
-    print(f"所有用户: {users}")
-    
-    # 测试删除用户
-    db.delete_user(user_id)
-    print("删除用户成功")
-    
-    print("数据库模块测试完成！")

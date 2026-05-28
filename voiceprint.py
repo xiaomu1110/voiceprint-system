@@ -1,6 +1,9 @@
 """
-声纹处理核心模块 - 声纹识别系统
-使用SpeechBrain的ECAPA-TDNN预训练模型提取声纹特征
+声纹处理核心模块
+
+使用 SpeechBrain 的 ECAPA-TDNN 预训练模型提取 192 维声纹嵌入向量。
+支持多种音频格式（WAV/MP3/FLAC/OGG/WebM 等），自动转码、重采样、带通滤波去噪。
+提供声纹注册（单条/批量融合）、身份识别（1:N）和身份验证（1:1）功能。
 """
 import torch
 import numpy as np
@@ -8,6 +11,7 @@ import os
 import tempfile
 import subprocess
 import soundfile as sf
+from scipy.signal import butter, filtfilt
 from config import MODEL_NAME, SAMPLE_RATE, SIMILARITY_THRESHOLD
 
 
@@ -15,10 +19,10 @@ class VoiceprintExtractor:
     """声纹特征提取器"""
     
     # 支持的音频格式
-    SUPPORTED_FORMATS = {'.wav', '.flac', '.ogg', '.mp3', '.m4a', '.aac', '.wma', '.opus'}
+    SUPPORTED_FORMATS = {'.wav', '.flac', '.ogg', '.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
     
     # 需要转换的格式
-    NEED_CONVERT = {'.mp3', '.m4a', '.aac', '.wma', '.opus'}
+    NEED_CONVERT = {'.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
     
     def __init__(self, model_name=MODEL_NAME):
         """
@@ -57,6 +61,16 @@ class VoiceprintExtractor:
                 continue
         
         return None
+    
+    @staticmethod
+    def _bandpass_filter(audio, sr, low=80, high=8000):
+        """带通滤波：去除语音频段外的噪声"""
+        nyq = sr / 2
+        high = min(high, nyq - 100)
+        low_n = max(low / nyq, 0.001)
+        high_n = min(high / nyq, 0.999)
+        b, a = butter(4, [low_n, high_n], btype='band')
+        return filtfilt(b, a, audio).astype(np.float32)
     
     def _load_model(self):
         """加载预训练模型"""
@@ -97,6 +111,8 @@ class VoiceprintExtractor:
                 '-i', audio_path,
                 '-ar', str(SAMPLE_RATE),  # 采样率
                 '-ac', '1',                # 单声道
+                '-acodec', 'pcm_s16le',   # 16bit PCM
+                '-f', 'wav',               # 强制WAV格式
                 '-y',                      # 覆盖输出文件
                 temp_path
             ]
@@ -219,6 +235,9 @@ class VoiceprintExtractor:
                 num_samples = int(len(audio) * target_sr / sample_rate)
                 audio = signal.resample(audio, num_samples)
                 sample_rate = target_sr
+            
+            # 带通滤波去噪：保留语音频段 80Hz-8kHz
+            audio = self._bandpass_filter(audio, sample_rate, low=80, high=8000)
             
             # 转换为torch张量
             waveform = torch.FloatTensor(audio).unsqueeze(0)
@@ -359,9 +378,38 @@ class VoiceprintDatabase:
         self.extractor = extractor
     
     def register_voiceprint(self, user_id, audio_path):
-        """注册声纹"""
+        """注册声纹（单条录音）"""
         embedding = self.extractor.extract_embedding(audio_path)
         vp_id = self.db.add_voiceprint(user_id, embedding, audio_path)
+        return vp_id
+
+    def batch_register_voiceprint(self, user_id, audio_paths):
+        """批量注册声纹：提取多条录音的embedding，取平均后存储为一个向量
+
+        Args:
+            user_id: 用户ID
+            audio_paths: 音频文件路径列表
+
+        Returns:
+            vp_id: 声纹记录ID
+        """
+        embeddings = []
+        for path in audio_paths:
+            try:
+                emb = self.extractor.extract_embedding(path)
+                embeddings.append(emb)
+            except Exception as e:
+                print(f"跳过音频 {path}: {e}")
+
+        if not embeddings:
+            raise ValueError("没有有效的音频数据")
+
+        # 多条录音取平均
+        avg_embedding = np.mean(embeddings, axis=0)
+        # L2归一化
+        avg_embedding = avg_embedding / np.linalg.norm(avg_embedding)
+
+        vp_id = self.db.replace_voiceprint(user_id, avg_embedding)
         return vp_id
     
     def verify_speaker(self, audio_path, threshold=SIMILARITY_THRESHOLD):
@@ -389,36 +437,38 @@ class VoiceprintDatabase:
         # 2. 获取所有比对分数（每个录音一条）
         result = self.extractor.verify_speaker(audio_path, reference_embeddings, threshold)
 
-        # 3. 如果没匹配到，直接返回
-        if not result['matched']:
-            result['user_name'] = None
-            result['department'] = None
-            return result
-
-        # 4. 将 all_scores 按用户聚合：每个用户取最高相似度
-        user_scores = {}  # user_id -> (max_similarity, any_similarity)
+        # 3. 将 all_scores 按用户聚合：每个用户取最高相似度
+        user_scores = {}
         for uid, score in result.get('all_scores', []):
-            if uid not in user_scores:
-                user_scores[uid] = score  # 首次，直接存
-            else:
-                user_scores[uid] = max(user_scores[uid], score)  # 取最大
+            if uid not in user_scores or score > user_scores[uid]:
+                user_scores[uid] = score
 
-        # 5. 按用户得分排序
+        # 4. 按用户得分排序
         sorted_users = sorted(user_scores.items(), key=lambda x: x[1], reverse=True)
 
-        # 6. 找到最高分用户
+        if not sorted_users:
+            return {
+                "matched": False,
+                "user_id": None,
+                "user_name": None,
+                "similarity": 0.0,
+                "message": "声纹数据库为空，请先注册声纹",
+                "all_scores": []
+            }
+
+        # 5. 找到最高分用户
         best_uid, best_score = sorted_users[0]
         is_matched = best_score >= threshold
 
-        # 7. 获取用户信息
+        # 6. 获取用户信息
         user = self.db.get_user(best_uid)
         best_user_name = user['name'] if user else "未知"
         best_department = user.get('department', "") if user else ""
 
-        # 8. 构建聚合后的 all_scores（每个用户只出现一次）
+        # 7. 构建聚合后的 all_scores（每个用户只出现一次）
         aggregated_scores = [(uid, score) for uid, score in sorted_users]
 
-        # 9. 返回结果
+        # 8. 返回结果
         result['user_id'] = best_uid
         result['user_name'] = best_user_name
         result['department'] = best_department
@@ -461,23 +511,3 @@ class VoiceprintDatabase:
         )
         
         return result
-
-
-# 测试代码
-if __name__ == "__main__":
-    from database import DatabaseManager
-    
-    print("初始化声纹特征提取器...")
-    extractor = VoiceprintExtractor()
-    
-    print("初始化数据库...")
-    db = DatabaseManager()
-    
-    print("初始化声纹数据库...")
-    vp_db = VoiceprintDatabase(db, extractor)
-    
-    print("\n声纹处理模块初始化成功！")
-    print(f"使用设备: {extractor.device}")
-    print(f"相似度阈值: {SIMILARITY_THRESHOLD}")
-    print(f"支持的音频格式: {', '.join(extractor.SUPPORTED_FORMATS)}")
-    print(f"FFmpeg路径: {extractor.ffmpeg_path or '未找到'}")

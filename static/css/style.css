@@ -1,0 +1,628 @@
+/* ========== 基础重置 ========== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* ========== 加载遮罩 ========== */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transition: opacity 0.3s;
+}
+
+.loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-content {
+    text-align: center;
+}
+
+.loading-content h2 {
+    font-size: 24px;
+    color: #1a73e8;
+    margin-bottom: 24px;
+}
+
+.loading-content p {
+    color: #666;
+    margin-top: 16px;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto;
+    border: 4px solid #e0e0e0;
+    border-top-color: #1a73e8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ========== 头部 ========== */
+.app-header {
+    background: #1a73e8;
+    color: white;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.app-header h1 {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-loading { background: #ff9800; animation: pulse 1s infinite; }
+.status-ready { background: #4caf50; }
+.status-error { background: #f44336; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ========== 标签导航 ========== */
+.tab-nav {
+    background: white;
+    display: flex;
+    border-bottom: 2px solid #e0e0e0;
+    padding: 0 24px;
+}
+
+.tab-btn {
+    padding: 14px 24px;
+    border: none;
+    background: none;
+    font-size: 15px;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.tab-btn:hover {
+    color: #1a73e8;
+}
+
+.tab-btn.active {
+    color: #1a73e8;
+    border-bottom-color: #1a73e8;
+}
+
+/* ========== 内容区 ========== */
+.tab-content {
+    padding: 20px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+/* ========== 卡片 ========== */
+.card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 16px;
+}
+
+.card h3 {
+    font-size: 16px;
+    color: #333;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.card-header h3 {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.card-header > div {
+    display: flex;
+    gap: 8px;
+}
+
+/* ========== 网格布局 ========== */
+.panel-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 900px) {
+    .panel-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ========== 表单 ========== */
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 14px;
+    color: #555;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.form-group input[type="text"],
+.form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-group input[type="text"]:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #1a73e8;
+    box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
+}
+
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+    accent-color: #1a73e8;
+}
+
+/* ========== 按钮 ========== */
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-primary {
+    background: #1a73e8;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1557b0;
+}
+
+.btn-primary:disabled {
+    background: #93c5fd;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #f5f5f5;
+    color: #333;
+    border: 1px solid #d9d9d9;
+}
+
+.btn-secondary:hover {
+    background: #e8e8e8;
+}
+
+.btn-danger {
+    background: #f44336;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #d32f2f;
+}
+
+.btn-record {
+    background: #4caf50;
+    color: white;
+    min-width: 120px;
+}
+
+.btn-record:hover {
+    background: #388e3c;
+}
+
+.btn-record.recording {
+    background: #f44336;
+    animation: pulse 1s infinite;
+}
+
+.record-icon {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: white;
+    border-radius: 50%;
+}
+
+.btn-record.recording .record-icon {
+    background: white;
+}
+
+/* ========== 文件上传 ========== */
+.file-upload {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.file-upload span {
+    font-size: 13px;
+    color: #999;
+}
+
+/* ========== 录音控件 ========== */
+.record-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.record-time {
+    font-family: "Consolas", monospace;
+    font-size: 18px;
+    color: #333;
+    min-width: 60px;
+}
+
+/* ========== 分隔线 ========== */
+.divider {
+    height: 1px;
+    background: #e8e8e8;
+    margin: 16px 0;
+}
+
+/* ========== 提示文字 ========== */
+.hint {
+    font-size: 13px;
+    color: #999;
+    margin-bottom: 12px;
+}
+
+/* ========== 表格 ========== */
+.table-wrapper {
+    overflow-x: auto;
+    margin-bottom: 12px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+th {
+    background: #fafafa;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #555;
+    border-bottom: 2px solid #e8e8e8;
+    white-space: nowrap;
+}
+
+td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+tr:hover {
+    background: #f5f7fa;
+}
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+}
+
+.btn-sm-danger {
+    background: #fff;
+    color: #f44336;
+    border: 1px solid #f44336;
+}
+
+.btn-sm-danger:hover {
+    background: #f44336;
+    color: white;
+}
+
+/* ========== 状态消息 ========== */
+.status-msg {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+}
+
+.status-msg.success {
+    display: block;
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-msg.error {
+    display: block;
+    background: #ffebee;
+    color: #c62828;
+}
+
+.status-msg.loading {
+    display: block;
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+/* ========== 结果区域 ========== */
+.result-icon {
+    font-size: 64px;
+    text-align: center;
+    padding: 20px 0;
+    font-weight: bold;
+}
+
+.result-icon.success { color: #4caf50; }
+.result-icon.fail { color: #f44336; }
+
+#result-text {
+    text-align: center;
+    font-size: 18px;
+    margin-bottom: 16px;
+}
+
+.result-detail {
+    background: #fafafa;
+    border-radius: 6px;
+    padding: 16px;
+    font-size: 14px;
+    line-height: 1.8;
+    white-space: pre-line;
+}
+
+/* ========== 滑块 ========== */
+input[type="range"] {
+    width: 100%;
+    accent-color: #1a73e8;
+}
+
+/* ========== 引导注册 ========== */
+.guide-progress {
+    margin-bottom: 16px;
+}
+
+.guide-progress span {
+    font-size: 13px;
+    color: #666;
+}
+
+.progress-bar {
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #1a73e8;
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+
+.guide-text-card {
+    background: #fffde7;
+    border: 1px solid #f0e68c;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.guide-category {
+    font-size: 12px;
+    color: #4caf50;
+    font-weight: 600;
+}
+
+.guide-text {
+    font-size: 20px;
+    line-height: 1.6;
+    margin: 8px 0;
+    color: #333;
+}
+
+.guide-tone {
+    font-size: 12px;
+    color: #999;
+}
+
+.guide-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.quality-indicator {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.guide-results {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.guide-result-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 13px;
+}
+
+.guide-result-item .quality-good { color: #4caf50; }
+.guide-result-item .quality-ok { color: #ff9800; }
+.guide-result-item .quality-bad { color: #f44336; }
+
+/* ========== 日志统计 ========== */
+.logs-stats {
+    font-size: 13px;
+    color: #666;
+    padding: 8px 0;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 600px) {
+    .app-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .tab-nav {
+        overflow-x: auto;
+    }
+
+    .tab-btn {
+        padding: 10px 16px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .tab-content {
+        padding: 12px;
+    }
+
+    .panel-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ========== 重置按钮 ========== */
+.btn-reset {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 6px 14px;
+    font-size: 13px;
+    margin-left: 12px;
+}
+
+.btn-reset:hover {
+    background: rgba(255,255,255,0.25);
+}
+
+/* ========== 弹窗 ========== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal-box {
+    background: white;
+    border-radius: 10px;
+    padding: 28px;
+    width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.modal-box h3 {
+    margin-bottom: 20px;
+    font-size: 18px;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
