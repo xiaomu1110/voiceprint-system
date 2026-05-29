@@ -41,14 +41,16 @@ extractor = None
 vp_database = None
 model_loaded = False
 model_error = None
+device_info = {}
 
 
 def load_model_async():
-    global extractor, vp_database, model_loaded, model_error
+    global extractor, vp_database, model_loaded, model_error, device_info
     try:
         from voiceprint import VoiceprintExtractor, VoiceprintDatabase
         extractor = VoiceprintExtractor()
         vp_database = VoiceprintDatabase(db_manager, extractor)
+        device_info = extractor.get_device_info()
         model_loaded = True
     except Exception as e:
         model_error = str(e)
@@ -77,7 +79,8 @@ def get_status():
         'model_loaded': model_loaded,
         'model_error': model_error,
         'similarity_threshold': SIMILARITY_THRESHOLD,
-        'sample_rate': SAMPLE_RATE
+        'sample_rate': SAMPLE_RATE,
+        **device_info,
     })
 
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Voiceprint System - Linux Setup Script
-# Usage: bash scripts/setup.sh
+# Usage: bash scripts/setup.sh [--auto|--gpu|--cpu]
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+MODE="${1:---auto}"
 
 echo "========================================"
 echo "  Voiceprint System - Linux Setup"
@@ -17,7 +19,7 @@ if ! command -v uv &>/dev/null; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
     if ! command -v uv &>/dev/null; then
-        echo "  [FAIL] uv installation failed. Install manually: https://docs.astral.sh/uv/"
+        echo "  [FAIL] uv installation failed."
         exit 1
     fi
 fi
@@ -26,7 +28,6 @@ echo ""
 
 # 2. Install system dependencies
 echo "[2/5] Checking system dependencies..."
-
 install_sys_deps() {
     if command -v apt-get &>/dev/null; then
         echo "  Detected: Debian/Ubuntu"
@@ -53,16 +54,15 @@ else
 fi
 echo ""
 
-# 3. Install Python via uv
+# 3. Install Python
 echo "[3/5] Ensuring Python 3.11..."
 uv python install 3.11
 echo "  [OK] Python ready"
 echo ""
 
-# 4. Sync dependencies
-echo "[4/5] Installing dependencies..."
-uv sync
-echo "  [OK] Dependencies installed"
+# 4. Run bootstrap
+echo "[4/5] Running bootstrap (mode=$MODE)..."
+uv run python scripts/bootstrap.py --mode "$MODE"
 echo ""
 
 # 5. Run doctor

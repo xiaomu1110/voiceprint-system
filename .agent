@@ -3,7 +3,7 @@
 ## Project Overview
 
 ECAPA-TDNN based voiceprint recognition system for power cabinet operator authentication.
-Flask Web application with SQLite storage and SpeechBrain voiceprint processing.
+Flask Web application with SQLite storage, SpeechBrain voiceprint processing, and GPU auto-detection.
 
 ## Tech Stack
 
@@ -13,7 +13,7 @@ Flask Web application with SQLite storage and SpeechBrain voiceprint processing.
 | Frontend | HTML + CSS + JavaScript | Browser-based UI |
 | Voiceprint | SpeechBrain ECAPA-TDNN | Pre-trained model, EER 0.170% |
 | Audio | soundfile + scipy + ffmpeg | Audio processing |
-| Deep Learning | PyTorch | Model inference |
+| Deep Learning | PyTorch | Model inference (GPU/CPU auto) |
 | Database | SQLite | Users, voiceprints, logs |
 | Env Manager | uv | Dependency & Python management |
 
@@ -34,9 +34,23 @@ uv run python web_server.py
 | Action | Command |
 |---|---|
 | Install deps | `uv sync` |
+| Install GPU/CPU torch | `uv run python scripts/bootstrap.py --auto` |
 | Start server | `uv run python web_server.py` |
 | Check env | `uv run python scripts/doctor.py` |
 | Add package | `uv add <package>` |
+
+## GPU Auto-Detection
+
+The system automatically detects NVIDIA GPU:
+- `scripts/bootstrap.py` checks `nvidia-smi`, selects CUDA wheel
+- `voiceprint.py` selects device: `auto` / `cuda` / `cpu`
+- Falls back to CPU if GPU unavailable or fails
+- `/api/status` returns current device info
+
+Environment variables:
+- `VOICEPRINT_DEVICE=auto|cuda|cpu`
+- `VOICEPRINT_ALLOW_CPU_FALLBACK=true`
+- `VOICEPRINT_CUDA_DEVICE_INDEX=0`
 
 ## Project Structure
 
@@ -49,10 +63,10 @@ voiceprint-system/
 ├── pyproject.toml      # Project metadata & deps
 ├── uv.lock             # Locked dependencies
 ├── .python-version     # Python version pin
-├── requirements.txt    # Compatibility only
 ├── scripts/
-│   ├── setup.ps1       # Windows setup
-│   ├── setup.sh        # Linux setup
+│   ├── setup.ps1       # Windows setup (GPU/CPU auto)
+│   ├── setup.sh        # Linux setup (GPU/CPU auto)
+│   ├── bootstrap.py    # GPU detection & torch installer
 │   └── doctor.py       # Environment check
 ├── templates/
 │   └── index.html      # Frontend
@@ -65,21 +79,9 @@ voiceprint-system/
     └── voiceprints.db
 ```
 
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| VOICEPRINT_DATA_DIR | data | Data directory |
-| VOICEPRINT_DB_PATH | data/voiceprints.db | Database path |
-| VOICEPRINT_THRESHOLD | 0.75 | Similarity threshold |
-| VOICEPRINT_SAMPLE_RATE | 16000 | Audio sample rate |
-| VOICEPRINT_HOST | 0.0.0.0 | Server listen address |
-| VOICEPRINT_PORT | 5000 | Server port |
-| VOICEPRINT_DEBUG | false | Flask debug mode |
-
 ## API Endpoints
 
-- GET /api/status - System status
+- GET /api/status - System status (includes device info)
 - GET /api/users - User list
 - POST /api/users - Add user
 - DELETE /api/users/<id> - Delete user
@@ -101,9 +103,9 @@ voiceprint-system/
 
 - First run auto-downloads ECAPA-TDNN model (~100MB)
 - Model stored in data/models/ecapa_tdnn/
-- Supports CUDA and CPU inference
+- Supports CUDA and CPU inference (auto-detected)
 - Python >=3.11,<3.13 required
 
 ---
 
-*Last updated: 2026-05-28*
+*Last updated: 2026-05-29*

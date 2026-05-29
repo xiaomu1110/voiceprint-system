@@ -1,7 +1,7 @@
 [project]
 name = "voiceprint-system"
-version = "1.1.0"
-description = "ECAPA-TDNN based voiceprint recognition system for operator authentication"
+version = "1.2.0"
+description = "ECAPA-TDNN based voiceprint recognition system with GPU auto-detection"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "flask>=3.0.0",
@@ -10,9 +10,9 @@ dependencies = [
     "scipy>=1.10.0",
     "soundfile>=0.12.0",
     "sounddevice>=0.4.6",
+    "speechbrain>=0.5.14",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
-    "speechbrain>=0.5.14",
 ]
 
 [tool.uv]

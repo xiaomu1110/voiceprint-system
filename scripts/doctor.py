@@ -2,7 +2,7 @@
 Voiceprint System - Environment Doctor
 
 Checks whether the current environment is ready to run the system.
-Run: uv run voiceprint-doctor
+Run: uv run python scripts/doctor.py
 """
 import importlib
 import os
@@ -39,12 +39,7 @@ def check_python() -> list[str]:
 def check_ffmpeg() -> list[str]:
     if _cmd_exists("ffmpeg"):
         try:
-            r = subprocess.run(
-                ["ffmpeg", "-version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
+            r = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=5)
             ver = r.stdout.splitlines()[0] if r.stdout else "unknown"
             return [_check(f"ffmpeg found: {ver}")]
         except Exception:
@@ -60,8 +55,40 @@ def check_ffmpeg() -> list[str]:
     ]
 
 
+def check_nvidia_smi() -> list[str]:
+    """Check if nvidia-smi is available and parse GPU info."""
+    if not _cmd_exists("nvidia-smi"):
+        return [_warn("nvidia-smi not found (no NVIDIA GPU or driver not installed)")]
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            return [_warn("nvidia-smi found but query failed")]
+        line = r.stdout.strip().splitlines()[0]
+        parts = [p.strip() for p in line.split(",")]
+        gpu_name = parts[0] if parts else "Unknown"
+        driver_ver = parts[1] if len(parts) > 1 else "Unknown"
+
+        # Parse CUDA version
+        r2 = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
+        cuda_ver = "Unknown"
+        for l in r2.stdout.splitlines():
+            import re
+            m = re.search(r"CUDA Version:\s*([\d.]+)", l)
+            if m:
+                cuda_ver = m.group(1)
+                break
+
+        return [
+            _check(f"NVIDIA GPU: {gpu_name}"),
+            _check(f"Driver: {driver_ver}"),
+            _check(f"CUDA support: {cuda_ver}"),
+        ]
+    except Exception as e:
+        return [_warn(f"nvidia-smi check failed: {e}")]
+
+
 def check_portable_imports() -> list[str]:
-    """Check libraries that may depend on system libs (soundfile, sounddevice)."""
     lines: list[str] = []
     for mod in ("soundfile", "sounddevice"):
         try:
@@ -84,15 +111,27 @@ def check_imports() -> list[str]:
     return lines
 
 
-def check_cuda() -> list[str]:
+def check_torch_detail() -> list[str]:
+    """Detailed torch + CUDA check."""
     try:
         import torch
+        lines = [
+            _check(f"torch version: {torch.__version__}"),
+            _check(f"torch.version.cuda: {torch.version.cuda or 'None (CPU build)'}"),
+        ]
         if torch.cuda.is_available():
             name = torch.cuda.get_device_name(0)
-            return [_check(f"CUDA available: {name}")]
-        return [_warn("CUDA not available (will use CPU)")]
-    except Exception:
-        return [_warn("CUDA check skipped (torch not available)")]
+            count = torch.cuda.device_count()
+            lines.append(_check(f"CUDA available: True"))
+            lines.append(_check(f"GPU count: {count}"))
+            lines.append(_check(f"GPU name: {name}"))
+            lines.append(_check(f"Runtime mode: GPU"))
+        else:
+            lines.append(_warn("CUDA available: False"))
+            lines.append(_warn("Runtime mode: CPU"))
+        return lines
+    except Exception as e:
+        return [_fail(f"torch check failed: {e}")]
 
 
 def check_data_dirs() -> list[str]:
@@ -119,7 +158,7 @@ def check_db_writable() -> list[str]:
         conn = sqlite3.connect(db_path)
         conn.execute("SELECT 1")
         conn.close()
-        return [_check(f"database writable: data/voiceprints.db")]
+        return [_check("database writable: data/voiceprints.db")]
     except Exception as e:
         return [_fail(f"database not writable: {e}")]
 
@@ -142,9 +181,10 @@ def main() -> int:
     sections = [
         ("Python", check_python),
         ("System Dependencies", check_ffmpeg),
+        ("NVIDIA GPU", check_nvidia_smi),
         ("Portable Libraries", check_portable_imports),
         ("Python Packages", check_imports),
-        ("GPU", check_cuda),
+        ("PyTorch & CUDA", check_torch_detail),
         ("Data Directories", check_data_dirs),
         ("Database", check_db_writable),
         ("Network", lambda: check_port()),
@@ -165,7 +205,7 @@ def main() -> int:
         print("=" * 50)
         return 1
     print("  Environment ready!")
-    print("  Run: uv run voiceprint-system")
+    print("  Run: uv run python web_server.py")
     print("=" * 50)
     return 0
 
