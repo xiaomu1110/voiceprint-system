@@ -68,12 +68,12 @@ echo ""
 
 # 5. Run bootstrap (detects GPU, installs CUDA/CPU torch)
 echo "[5/6] Running bootstrap (mode=$MODE)..."
-uv run python scripts/bootstrap.py --mode "$MODE"
+.venv/bin/python scripts/bootstrap.py --mode "$MODE"
 echo ""
 
 # 6. Run doctor
 echo "[6/6] Running environment check..."
-uv run python scripts/doctor.py
+.venv/bin/python scripts/doctor.py
 echo ""
 
 echo "========================================"

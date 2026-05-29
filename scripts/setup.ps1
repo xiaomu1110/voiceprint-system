@@ -63,12 +63,12 @@ Write-Host ""
 
 # 5. Run bootstrap (detects GPU, installs CUDA/CPU torch)
 Write-Host "[5/6] Running bootstrap (mode=$Mode)..." -ForegroundColor Yellow
-uv run python scripts/bootstrap.py --mode $Mode
+& .\.venv\Scripts\python.exe scripts/bootstrap.py --mode $Mode
 Write-Host ""
 
 # 6. Run doctor
 Write-Host "[6/6] Running environment check..." -ForegroundColor Yellow
-uv run python scripts/doctor.py
+& .\.venv\Scripts\python.exe scripts/doctor.py
 Write-Host ""
 
 Write-Host "========================================" -ForegroundColor Cyan
