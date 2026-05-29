@@ -55,18 +55,24 @@ fi
 echo ""
 
 # 3. Install Python
-echo "[3/5] Ensuring Python 3.11..."
+echo "[3/6] Ensuring Python 3.11..."
 uv python install 3.11
 echo "  [OK] Python ready"
 echo ""
 
-# 4. Run bootstrap
-echo "[4/5] Running bootstrap (mode=$MODE)..."
+# 4. Install common dependencies (non-torch)
+echo "[4/6] Installing common dependencies..."
+uv sync
+echo "  [OK] Common dependencies installed"
+echo ""
+
+# 5. Run bootstrap (detects GPU, installs CUDA/CPU torch)
+echo "[5/6] Running bootstrap (mode=$MODE)..."
 uv run python scripts/bootstrap.py --mode "$MODE"
 echo ""
 
-# 5. Run doctor
-echo "[5/5] Running environment check..."
+# 6. Run doctor
+echo "[6/6] Running environment check..."
 uv run python scripts/doctor.py
 echo ""
 

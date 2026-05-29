@@ -77,6 +77,12 @@ def select_wheel(cuda_version: str | None) -> str:
         return "cpu"
 
 
+def _uninstall_torch(uv: str) -> None:
+    """Uninstall existing torch and torchaudio to allow clean reinstall."""
+    print("  Uninstalling existing torch/torchaudio...")
+    _run([uv, "pip", "uninstall", "torch", "torchaudio", "-y"])
+
+
 def install_torch(mode: str, cuda_version: str | None = None) -> bool:
     """Install torch + torchaudio. Returns True if GPU install succeeded."""
     uv = shutil.which("uv")
@@ -88,6 +94,7 @@ def install_torch(mode: str, cuda_version: str | None = None) -> bool:
         wheel = select_wheel(cuda_version)
         index_url = f"https://download.pytorch.org/whl/{wheel}"
         print(f"  Installing GPU torch ({wheel})...")
+        _uninstall_torch(uv)
         r = _run([uv, "pip", "install", "torch", "torchaudio", "--index-url", index_url])
         if r.returncode != 0:
             print(f"  [WARN] GPU install failed: {r.stderr[:200]}")
@@ -96,6 +103,7 @@ def install_torch(mode: str, cuda_version: str | None = None) -> bool:
         return True
     else:
         print("  Installing CPU torch...")
+        _uninstall_torch(uv)
         r = _run([uv, "pip", "install", "torch", "torchaudio", "--index-url",
                    "https://download.pytorch.org/whl/cpu"])
         if r.returncode != 0:
@@ -137,17 +145,6 @@ def verify_install() -> dict:
         return {"ok": False, "error": str(e)}
 
 
-def install_common_deps() -> bool:
-    """Install non-torch dependencies from pyproject.toml."""
-    uv = shutil.which("uv")
-    if not uv:
-        return False
-    print("  Installing common dependencies...")
-    r = _run([uv, "sync"])
-    if r.returncode != 0:
-        print(f"  [WARN] uv sync failed: {r.stderr[:200]}")
-    return r.returncode == 0
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Voiceprint System Bootstrap")
@@ -161,7 +158,7 @@ def main() -> int:
     print()
 
     # Step 1: Detect GPU
-    print("[1/4] Detecting GPU...")
+    print("[1/3] Detecting GPU...")
     gpu = detect_gpu()
     if gpu.get("available"):
         print(f"  [OK] GPU: {gpu['name']}")
@@ -172,7 +169,7 @@ def main() -> int:
     print()
 
     # Step 2: Decide mode
-    print("[2/4] Selecting mode...")
+    print("[2/3] Selecting mode...")
     mode = args.mode
     if mode == "auto":
         if gpu.get("available"):
@@ -185,12 +182,8 @@ def main() -> int:
         print(f"  [OK] Forced mode: {mode.upper()}")
     print()
 
-    # Step 3: Install common deps first
-    print("[3/4] Installing dependencies...")
-    install_common_deps()
-
-    # Step 4: Install torch
-    print(f"[4/4] Installing PyTorch ({mode.upper()})...")
+    # Step 3: Install torch
+    print(f"[3/3] Installing PyTorch ({mode.upper()})...")
     gpu_ok = install_torch(mode, gpu.get("cuda_version"))
 
     # Verify

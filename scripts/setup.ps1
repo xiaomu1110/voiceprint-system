@@ -49,13 +49,25 @@ uv python install 3.11
 Write-Host "  [OK] Python ready" -ForegroundColor Green
 Write-Host ""
 
-# 4. Run bootstrap (installs common deps + torch based on GPU detection)
-Write-Host "[4/5] Running bootstrap (mode=$Mode)..." -ForegroundColor Yellow
+# 3. Install Python
+Write-Host "[3/5] Ensuring Python 3.11..." -ForegroundColor Yellow
+uv python install 3.11
+Write-Host "  [OK] Python ready" -ForegroundColor Green
+Write-Host ""
+
+# 4. Install common dependencies (non-torch)
+Write-Host "[4/6] Installing common dependencies..." -ForegroundColor Yellow
+uv sync
+Write-Host "  [OK] Common dependencies installed" -ForegroundColor Green
+Write-Host ""
+
+# 5. Run bootstrap (detects GPU, installs CUDA/CPU torch)
+Write-Host "[5/6] Running bootstrap (mode=$Mode)..." -ForegroundColor Yellow
 uv run python scripts/bootstrap.py --mode $Mode
 Write-Host ""
 
-# 5. Run doctor
-Write-Host "[5/5] Running environment check..." -ForegroundColor Yellow
+# 6. Run doctor
+Write-Host "[6/6] Running environment check..." -ForegroundColor Yellow
 uv run python scripts/doctor.py
 Write-Host ""
 
