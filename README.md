@@ -1,73 +1,106 @@
 # Voiceprint Recognition System
 
-基于 ECAPA-TDNN 声纹识别模型的配电柜操作人员身份认证系统。
+ECAPA-TDNN based voiceprint recognition system for power cabinet operator authentication.
 
-## 功能
+## Features
 
-- 用户管理（添加/删除）
-- 声纹注册（上传音频 / 浏览器录音 / 引导式多段录音融合）
-- 身份识别（1:N）和身份验证（1:1）
-- 验证日志
-- 系统重置（管理员验证）
+- User management (add / delete)
+- Voiceprint registration (upload audio / browser recording / guided multi-segment fusion)
+- Speaker identification (1:N) and verification (1:1)
+- Verification logs
+- System reset (admin authentication)
 
-## 快速开始
+## Quick Start
 
-```bash
-# 1. 安装系统依赖
-sudo apt-get install -y libsndfile1 ffmpeg python3-venv
+### Prerequisites
 
-# 2. 克隆项目
+- [uv](https://docs.astral.sh/uv/) (installed automatically by setup scripts)
+- [ffmpeg](https://ffmpeg.org/download.html) (installed automatically by setup scripts)
+
+### Windows
+
+```powershell
 git clone https://github.com/xiaomu1110/voiceprint-system.git
 cd voiceprint-system
-
-# 3. 创建虚拟环境并安装依赖
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# 4. 启动
-python3 web_server.py
+.\scripts\setup.ps1
+uv run python web_server.py
 ```
 
-访问 http://localhost:5000
+### Linux
 
-## 配置
-
-编辑 `config.py`：
-
-```python
-SIMILARITY_THRESHOLD = 0.75  # 相似度阈值（0-1）
-SAMPLE_RATE = 16000          # 采样率
+```bash
+git clone https://github.com/xiaomu1110/voiceprint-system.git
+cd voiceprint-system
+bash scripts/setup.sh
+uv run python web_server.py
 ```
 
-## 管理员重置
+### Verify Environment
 
-点击右上角"重置系统"，输入账号 `admin`，密码 `123456`。
+```bash
+uv run python scripts/doctor.py
+```
 
-## 项目结构
+Open http://localhost:5000 in your browser.
+
+## Configuration
+
+Edit `config.py` or set environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `VOICEPRINT_DATA_DIR` | `data` | Data storage directory |
+| `VOICEPRINT_DB_PATH` | `data/voiceprints.db` | Database file path |
+| `VOICEPRINT_THRESHOLD` | `0.75` | Similarity threshold (0-1) |
+| `VOICEPRINT_SAMPLE_RATE` | `16000` | Audio sample rate |
+| `VOICEPRINT_HOST` | `0.0.0.0` | Server listen address |
+| `VOICEPRINT_PORT` | `5000` | Server listen port |
+| `VOICEPRINT_DEBUG` | `false` | Enable Flask debug mode |
+
+## Common Commands
+
+| Action | Command |
+|---|---|
+| Install dependencies | `uv sync` |
+| Start server | `uv run python web_server.py` |
+| Check environment | `uv run python scripts/doctor.py` |
+| Add a package | `uv add <package>` |
+
+## Project Structure
 
 ```
-├── web_server.py       # Flask Web 服务器
-├── config.py           # 配置
-├── database.py         # 数据库管理
-├── voiceprint.py       # 声纹处理核心
-├── requirements.txt    # Python 依赖
+voiceprint-system/
+├── web_server.py       # Flask Web server
+├── config.py           # Configuration
+├── database.py         # Database management
+├── voiceprint.py       # Voiceprint processing core
+├── pyproject.toml      # Project metadata & dependencies
+├── uv.lock             # Locked dependencies
+├── .python-version     # Python version
+├── scripts/
+│   ├── setup.ps1       # Windows setup
+│   ├── setup.sh        # Linux setup
+│   └── doctor.py       # Environment check
 ├── templates/
-│   └── index.html      # 前端页面
+│   └── index.html      # Frontend page
 ├── static/
-│   ├── css/style.css   # 样式
-│   └── js/app.js       # 前端逻辑
-└── data/               # 数据存储
+│   ├── css/style.css   # Styles
+│   └── js/app.js       # Frontend logic
+└── data/               # Runtime data (not committed)
+    ├── audio_files/
+    ├── models/
+    └── voiceprints.db
 ```
 
-## 技术栈
+## Tech Stack
 
-- 声纹模型：SpeechBrain ECAPA-TDNN
-- 后端：Flask
-- 前端：HTML + CSS + JavaScript
-- 数据库：SQLite
-- 音频处理：soundfile + scipy + ffmpeg
+- Voiceprint model: SpeechBrain ECAPA-TDNN
+- Backend: Flask
+- Frontend: HTML + CSS + JavaScript
+- Database: SQLite
+- Audio: soundfile + scipy + ffmpeg
+- Environment: uv
 
-## 许可证
+## License
 
 MIT License

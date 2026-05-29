@@ -30,7 +30,7 @@ from flask_cors import CORS
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import SIMILARITY_THRESHOLD, SAMPLE_RATE, AUDIO_DIR, MODEL_DIR
+from config import SIMILARITY_THRESHOLD, SAMPLE_RATE, AUDIO_DIR, MODEL_DIR, HOST, PORT, DEBUG
 from database import DatabaseManager
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -442,11 +442,15 @@ def register_voiceprint_batch():
                     pass
 
 
+def main():
+    print("=" * 50)
+    print("Voiceprint Recognition System")
+    print("=" * 50)
+    print(f"Loading voiceprint model...")
+    print(f"Listening on http://{HOST}:{PORT}")
+    print("=" * 50)
+    app.run(host=HOST, port=PORT, debug=DEBUG, threaded=True)
+
+
 if __name__ == '__main__':
-    print("=" * 50)
-    print("配电柜智能语音识别系统 - Web版")
-    print("=" * 50)
-    print(f"正在加载声纹识别模型...")
-    print(f"请访问 http://localhost:5000")
-    print("=" * 50)
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    main()

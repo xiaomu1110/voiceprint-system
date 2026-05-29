@@ -1,15 +1,17 @@
 # Python
-.venv/
-venv/
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 dist/
 build/
 
+# Virtual environment
+.venv/
+venv/
+
 # Data
 data/voiceprints.db
-*.db
 data/audio_files/*
 !data/audio_files/.gitkeep
 data/models/*
@@ -19,14 +21,24 @@ data/models/*
 .idea/
 .vscode/
 *.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Logs
 *.log
+logs/
 
 # Temp
 *.tmp
 *.temp
+*.bak
+*.old
+
+# Environment
+.env
+.env.local
