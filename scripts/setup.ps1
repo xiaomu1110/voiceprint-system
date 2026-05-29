@@ -1,9 +1,9 @@
 # Voiceprint System - Windows Setup Script
-# Usage: powershell -ExecutionPolicy ByPass -File scripts/setup.ps1 [-Mode auto|gpu|cpu]
+# Usage: powershell -ExecutionPolicy ByPass -File scripts/setup.ps1 [-Mode gpu]
 
 param(
-    [ValidateSet("auto", "gpu", "cpu")]
-    [string]$Mode = "auto"
+    [ValidateSet("gpu")]
+    [string]$Mode = "gpu"
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,19 +49,13 @@ uv python install 3.11
 Write-Host "  [OK] Python ready" -ForegroundColor Green
 Write-Host ""
 
-# 3. Install Python
-Write-Host "[3/5] Ensuring Python 3.11..." -ForegroundColor Yellow
-uv python install 3.11
-Write-Host "  [OK] Python ready" -ForegroundColor Green
-Write-Host ""
-
 # 4. Install common dependencies (non-torch)
 Write-Host "[4/6] Installing common dependencies..." -ForegroundColor Yellow
 uv sync
 Write-Host "  [OK] Common dependencies installed" -ForegroundColor Green
 Write-Host ""
 
-# 5. Run bootstrap (detects GPU, installs CUDA/CPU torch)
+# 5. Run bootstrap (requires GPU, installs CUDA torch)
 Write-Host "[5/6] Running bootstrap (mode=$Mode)..." -ForegroundColor Yellow
 & .\.venv\Scripts\python.exe scripts/bootstrap.py --mode $Mode
 Write-Host ""
@@ -73,5 +67,5 @@ Write-Host ""
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Setup complete!" -ForegroundColor Cyan
-Write-Host "  Start: uv run python web_server.py" -ForegroundColor Cyan
+Write-Host "  Start: uv run --no-sync python web_server.py" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan

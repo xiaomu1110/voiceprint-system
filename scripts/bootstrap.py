@@ -1,8 +1,8 @@
 """
 Voiceprint System - Bootstrap
 
-Detects GPU, selects the correct PyTorch wheel, installs dependencies.
-Run: uv run python scripts/bootstrap.py [--auto|--gpu|--cpu]
+Detects GPU, selects the correct CUDA PyTorch wheel, installs dependencies.
+Run: uv run python scripts/bootstrap.py [--mode gpu]
 """
 import argparse
 import os
@@ -58,7 +58,7 @@ def detect_gpu() -> dict:
 def select_wheel(cuda_version: str | None) -> str:
     """Select PyTorch CUDA wheel tag based on driver CUDA support."""
     if not cuda_version:
-        return "cu126"
+        raise RuntimeError("Cannot determine driver CUDA support from nvidia-smi")
 
     major, minor = cuda_version.split(".")[:2]
     cuda_num = float(f"{major}.{minor}")
@@ -74,7 +74,7 @@ def select_wheel(cuda_version: str | None) -> str:
     elif cuda_num >= 11.8:
         return "cu118"
     else:
-        return "cpu"
+        raise RuntimeError(f"Driver CUDA support {cuda_version} is too old; need >= 11.8")
 
 
 def _uninstall_torch(uv: str) -> None:
@@ -83,33 +83,27 @@ def _uninstall_torch(uv: str) -> None:
     _run([uv, "pip", "uninstall", "torch", "torchaudio", "-y"])
 
 
-def install_torch(mode: str, cuda_version: str | None = None) -> bool:
-    """Install torch + torchaudio. Returns True if GPU install succeeded."""
+def install_torch(cuda_version: str | None = None) -> bool:
+    """Install CUDA torch + torchaudio. Returns True if CUDA install succeeded."""
     uv = shutil.which("uv")
     if not uv:
         print("  [FAIL] uv not found")
         return False
 
-    if mode == "gpu":
+    try:
         wheel = select_wheel(cuda_version)
-        index_url = f"https://download.pytorch.org/whl/{wheel}"
-        print(f"  Installing GPU torch ({wheel})...")
-        _uninstall_torch(uv)
-        r = _run([uv, "pip", "install", "torch", "torchaudio", "--index-url", index_url])
-        if r.returncode != 0:
-            print(f"  [WARN] GPU install failed: {r.stderr[:200]}")
-            print(f"  Falling back to CPU...")
-            return install_torch("cpu")
-        return True
-    else:
-        print("  Installing CPU torch...")
-        _uninstall_torch(uv)
-        r = _run([uv, "pip", "install", "torch", "torchaudio", "--index-url",
-                   "https://download.pytorch.org/whl/cpu"])
-        if r.returncode != 0:
-            print(f"  [FAIL] CPU install failed: {r.stderr[:200]}")
-            return False
-        return True
+    except RuntimeError as e:
+        print(f"  [FAIL] {e}")
+        return False
+
+    index_url = f"https://download.pytorch.org/whl/{wheel}"
+    print(f"  Installing CUDA torch ({wheel})...")
+    _uninstall_torch(uv)
+    r = _run([uv, "pip", "install", "torch", "torchaudio", "--index-url", index_url])
+    if r.returncode != 0:
+        print(f"  [FAIL] CUDA torch install failed: {r.stderr[:500]}")
+        return False
+    return True
 
 
 def verify_install() -> dict:
@@ -148,8 +142,8 @@ def verify_install() -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Voiceprint System Bootstrap")
-    parser.add_argument("--mode", choices=["auto", "gpu", "cpu"], default="auto",
-                        help="Installation mode (default: auto)")
+    parser.add_argument("--mode", choices=["auto", "gpu"], default="gpu",
+                        help="Installation mode. Both modes require a CUDA-capable NVIDIA GPU.")
     args = parser.parse_args()
 
     print("=" * 50)
@@ -165,26 +159,28 @@ def main() -> int:
         print(f"  [OK] Driver: {gpu['driver_version']}")
         print(f"  [OK] CUDA: {gpu['cuda_version']}")
     else:
-        print("  [INFO] No NVIDIA GPU detected")
+        print("  [FAIL] No NVIDIA GPU detected. This system requires CUDA GPU acceleration.")
+        print()
+        print("=" * 50)
+        print("  Bootstrap failed!")
+        print("=" * 50)
+        return 1
     print()
 
     # Step 2: Decide mode
     print("[2/3] Selecting mode...")
-    mode = args.mode
-    if mode == "auto":
-        if gpu.get("available"):
-            mode = "gpu"
-            print(f"  [OK] Auto-selected: GPU")
-        else:
-            mode = "cpu"
-            print(f"  [OK] Auto-selected: CPU")
-    else:
-        print(f"  [OK] Forced mode: {mode.upper()}")
+    print(f"  [OK] GPU required ({args.mode})")
     print()
 
     # Step 3: Install torch
-    print(f"[3/3] Installing PyTorch ({mode.upper()})...")
-    gpu_ok = install_torch(mode, gpu.get("cuda_version"))
+    print("[3/3] Installing PyTorch (CUDA)...")
+    gpu_ok = install_torch(gpu.get("cuda_version"))
+    if not gpu_ok:
+        print()
+        print("=" * 50)
+        print("  CUDA PyTorch installation failed!")
+        print("=" * 50)
+        return 1
 
     # Verify
     print()
@@ -200,16 +196,16 @@ def main() -> int:
             print()
             print("=" * 50)
             print("  GPU mode ready!")
-            print("  Start: uv run python web_server.py")
+            print("  Start: uv run --no-sync python web_server.py")
             print("=" * 50)
             return 0
         else:
             print()
             print("=" * 50)
-            print("  CPU mode ready (GPU not available)")
-            print("  Start: uv run python web_server.py")
+            print("  [FAIL] CUDA is not available after installing PyTorch.")
+            print("  The system will not run in CPU mode.")
             print("=" * 50)
-            return 0
+            return 1
     else:
         print(f"  [FAIL] {result.get('error', 'unknown error')}")
         print()

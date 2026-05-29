@@ -1,6 +1,7 @@
 # Voiceprint Recognition System
 
 ECAPA-TDNN based voiceprint recognition system for power cabinet operator authentication.
+This version requires NVIDIA CUDA GPU acceleration. CPU-only runtime is unsupported.
 
 ## Features
 
@@ -9,7 +10,8 @@ ECAPA-TDNN based voiceprint recognition system for power cabinet operator authen
 - Speaker identification (1:N) and verification (1:1)
 - Verification logs
 - System reset (admin authentication)
-- **GPU auto-detection**: uses NVIDIA GPU when available, falls back to CPU automatically
+- **GPU-only runtime**: requires NVIDIA CUDA and fails fast when GPU acceleration is unavailable
+- Detailed web status panel showing model, CUDA, PyTorch, GPU, driver, memory, and data statistics
 
 ## Quick Start
 
@@ -24,7 +26,7 @@ ECAPA-TDNN based voiceprint recognition system for power cabinet operator authen
 git clone https://github.com/xiaomu1110/voiceprint-system.git
 cd voiceprint-system
 .\scripts\setup.ps1
-uv run python web_server.py
+.\.venv\Scripts\python.exe web_server.py
 ```
 
 ### Linux
@@ -33,52 +35,46 @@ uv run python web_server.py
 git clone https://github.com/xiaomu1110/voiceprint-system.git
 cd voiceprint-system
 bash scripts/setup.sh
-uv run python web_server.py
+.venv/bin/python web_server.py
 ```
 
 Open http://localhost:5000 in your browser.
 
-## GPU / CPU Auto-Detection
+## GPU Requirement
 
-The setup scripts automatically detect your hardware:
+The setup scripts detect NVIDIA GPU and install a CUDA PyTorch wheel. If no CUDA-capable GPU is available, setup and runtime fail with an explicit error.
 
 | Scenario | Behavior |
 |---|---|
 | NVIDIA GPU + driver | Installs CUDA PyTorch, runs on GPU |
-| No NVIDIA GPU | Installs CPU PyTorch, runs on CPU |
-| GPU install fails | Falls back to CPU automatically |
-| GPU runtime fails | Falls back to CPU automatically |
+| No NVIDIA GPU | Setup fails |
+| CPU-only PyTorch | Doctor/runtime fail |
+| GPU runtime fails | Runtime fails; no CPU fallback |
 
-### Force a specific mode
+### Setup mode
 
 Windows:
 
 ```powershell
-.\scripts\setup.ps1 -Mode gpu   # Force GPU (errors if unavailable)
-.\scripts\setup.ps1 -Mode cpu   # Force CPU
-.\scripts\setup.ps1 -Mode auto  # Auto-detect (default)
+.\scripts\setup.ps1 -Mode gpu
 ```
 
 Linux:
 
 ```bash
 bash scripts/setup.sh --gpu
-bash scripts/setup.sh --cpu
-bash scripts/setup.sh --auto
 ```
 
 ### Verify environment
 
 ```bash
-uv run python scripts/doctor.py
+uv run --no-sync python scripts/doctor.py
 ```
 
 ### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `VOICEPRINT_DEVICE` | `auto` | `auto` / `cuda` / `cpu` |
-| `VOICEPRINT_ALLOW_CPU_FALLBACK` | `true` | Fall back to CPU on GPU failure |
 | `VOICEPRINT_CUDA_DEVICE_INDEX` | `0` | GPU index for multi-GPU systems |
 | `VOICEPRINT_DATA_DIR` | `data` | Data storage directory |
 | `VOICEPRINT_DB_PATH` | `data/voiceprints.db` | Database file path |
@@ -92,9 +88,9 @@ uv run python scripts/doctor.py
 | Action | Command |
 |---|---|
 | Install dependencies | `uv sync` |
-| Install GPU/CPU torch | `uv run python scripts/bootstrap.py --auto` |
-| Start server | `uv run python web_server.py` |
-| Check environment | `uv run python scripts/doctor.py` |
+| Install CUDA torch | `uv run python scripts/bootstrap.py --mode gpu` |
+| Start server | `uv run --no-sync python web_server.py` |
+| Check environment | `uv run --no-sync python scripts/doctor.py` |
 | Add a package | `uv add <package>` |
 
 ## Project Structure
@@ -109,9 +105,9 @@ voiceprint-system/
 ├── uv.lock             # Locked dependencies
 ├── .python-version     # Python version pin
 ├── scripts/
-│   ├── setup.ps1       # Windows setup (GPU/CPU auto)
-│   ├── setup.sh        # Linux setup (GPU/CPU auto)
-│   ├── bootstrap.py    # GPU detection & torch installer
+│   ├── setup.ps1       # Windows setup (GPU required)
+│   ├── setup.sh        # Linux setup (GPU required)
+│   ├── bootstrap.py    # GPU detection & CUDA torch installer
 │   └── doctor.py       # Environment verification
 ├── templates/
 │   └── index.html      # Frontend page
@@ -131,7 +127,7 @@ voiceprint-system/
 - Frontend: HTML + CSS + JavaScript
 - Database: SQLite
 - Audio: soundfile + scipy + ffmpeg
-- Deep Learning: PyTorch (CUDA or CPU, auto-detected)
+- Deep Learning: PyTorch CUDA (GPU required)
 - Environment: uv
 
 ## License

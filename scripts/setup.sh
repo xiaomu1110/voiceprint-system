@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Voiceprint System - Linux Setup Script
-# Usage: bash scripts/setup.sh [--auto|--gpu|--cpu]
+# Usage: bash scripts/setup.sh [--gpu]
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-MODE="${1:---auto}"
+MODE="${1:---gpu}"
+if [[ "$MODE" != "--gpu" ]]; then
+    echo "  [FAIL] CPU and auto CPU fallback modes are not supported. Use: bash scripts/setup.sh --gpu"
+    exit 1
+fi
 
 echo "========================================"
 echo "  Voiceprint System - Linux Setup"
@@ -66,9 +70,9 @@ uv sync
 echo "  [OK] Common dependencies installed"
 echo ""
 
-# 5. Run bootstrap (detects GPU, installs CUDA/CPU torch)
+# 5. Run bootstrap (requires GPU, installs CUDA torch)
 echo "[5/6] Running bootstrap (mode=$MODE)..."
-.venv/bin/python scripts/bootstrap.py --mode "$MODE"
+.venv/bin/python scripts/bootstrap.py --mode gpu
 echo ""
 
 # 6. Run doctor
@@ -78,5 +82,5 @@ echo ""
 
 echo "========================================"
 echo "  Setup complete!"
-echo "  Start: uv run python web_server.py"
+echo "  Start: uv run --no-sync python web_server.py"
 echo "========================================"

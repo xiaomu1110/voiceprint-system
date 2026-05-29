@@ -19,9 +19,7 @@ SAMPLE_RATE = int(os.environ.get("VOICEPRINT_SAMPLE_RATE", "16000"))
 EMBEDDING_DIM = int(os.environ.get("VOICEPRINT_EMBEDDING_DIM", "192"))
 MODEL_NAME = os.environ.get("VOICEPRINT_MODEL_NAME", "speechbrain/spkrec-ecapa-voxceleb")
 
-# Device
-DEVICE_PREFERENCE = os.environ.get("VOICEPRINT_DEVICE", "auto").lower()
-ALLOW_CPU_FALLBACK = os.environ.get("VOICEPRINT_ALLOW_CPU_FALLBACK", "true").lower() in ("1", "true", "yes")
+# Device: this system requires NVIDIA CUDA. CPU execution is intentionally unsupported.
 CUDA_DEVICE_INDEX = int(os.environ.get("VOICEPRINT_CUDA_DEVICE_INDEX", "0"))
 
 # Server

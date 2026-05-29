@@ -1,6 +1,7 @@
 // ========== 全局状态 ==========
 let modelLoaded = false;
 let usersList = [];
+let systemStatus = null;
 
 // 录音相关
 let regMediaRecorder = null;
@@ -22,7 +23,7 @@ let guideRecordSeconds = 0;
 let guideTexts = [];
 let guideCurrentIndex = 0;
 let guideResults = [];
-let guideAudioBlobs = [];  // 暂存所有录音blob
+let guideSegments = [];
 
 // ========== 初始化 ==========
 document.addEventListener('DOMContentLoaded', () => {
@@ -57,6 +58,11 @@ function initFileInputs() {
     document.getElementById('verify-file').addEventListener('change', function() {
         document.getElementById('verify-file-name').textContent = this.files[0] ? this.files[0].name : '未选择文件';
     });
+    document.getElementById('guide-file').addEventListener('change', function() {
+        const file = this.files[0];
+        this.value = '';
+        if (file) processGuideAudio(file, 'upload');
+    });
     document.getElementById('add-user-form').addEventListener('submit', function(e) {
         e.preventDefault();
         addUser();
@@ -68,20 +74,67 @@ function checkModelStatus() {
     fetch('/api/status')
         .then(r => r.json())
         .then(data => {
+            systemStatus = data;
+            renderSystemStatus(data);
             modelLoaded = data.model_loaded;
             if (data.model_loaded) {
                 document.getElementById('loading-overlay').classList.add('hidden');
                 document.getElementById('status-indicator').className = 'status-dot status-ready';
-                document.getElementById('status-text').textContent = '就绪';
+                document.getElementById('status-text').textContent = `GPU 就绪 · ${data.device_name || data.gpu_name || 'CUDA'}`;
             } else if (data.model_error) {
+                document.getElementById('loading-overlay').classList.add('hidden');
                 document.getElementById('loading-text').textContent = '模型加载失败: ' + data.model_error;
                 document.getElementById('status-indicator').className = 'status-dot status-error';
-                document.getElementById('status-text').textContent = '加载失败';
+                document.getElementById('status-text').textContent = 'GPU 模型加载失败';
             } else {
+                document.getElementById('status-text').textContent = 'GPU 模型加载中...';
                 setTimeout(checkModelStatus, 1000);
             }
         })
         .catch(() => setTimeout(checkModelStatus, 2000));
+}
+
+function renderSystemStatus(data) {
+    setText('runtime-mode', data.model_runtime === 'gpu' ? 'GPU 加速' : '仅支持 GPU');
+    setText('gpu-device', data.device_name || data.gpu_name || firstSmiGpuName(data) || '未检测到可用 CUDA GPU');
+    setText('cuda-state', data.cuda_available ? `可用 (${data.gpu_count || 0} 个设备)` : '不可用');
+    setText('torch-state', `${data.torch_version || '未知'} / CUDA ${data.torch_cuda_version || '无'}`);
+    setText('model-state', data.model_loaded ? '已加载' : (data.model_error ? '加载失败' : '加载中'));
+
+    const stats = data.data || {};
+    setText('data-state', `用户 ${stats.users ?? '-'} · 声纹 ${stats.voiceprints ?? '-'} · 日志 ${stats.verify_logs ?? '-'}`);
+
+    const lines = [
+        `设备策略: ${data.runtime_requirement || 'NVIDIA CUDA GPU required'}`,
+        `当前设备: ${data.device || '-'}`,
+        `GPU 名称: ${data.device_name || data.gpu_name || '-'}`,
+        `显存: ${data.gpu_memory_allocated || '-'} 已用 / ${data.gpu_memory_reserved || '-'} 预留 / ${data.gpu_memory_total || '-' } 总量`,
+        `计算能力: ${data.gpu_compute_capability || '-'}`,
+        `cuDNN: ${data.cudnn_enabled ? '启用' : '未启用'}${data.cudnn_version ? ' (' + data.cudnn_version + ')' : ''}`,
+        `nvidia-smi: ${data.nvidia_smi_available ? '可用' : '不可用'}`,
+    ];
+
+    if (data.nvidia_smi_gpus && data.nvidia_smi_gpus.length > 0) {
+        lines.push('驱动检测: ' + data.nvidia_smi_gpus.map(g => `${g.name} / Driver ${g.driver_version} / ${g.memory_total}`).join('; '));
+    }
+    if (data.model_error) {
+        lines.push(`失败原因: ${data.model_error}`);
+    }
+    if (data.diagnostic_error) {
+        lines.push(`诊断错误: ${data.diagnostic_error}`);
+    }
+
+    const detail = document.getElementById('gpu-detail');
+    if (detail) detail.textContent = lines.join('\n');
+}
+
+function firstSmiGpuName(data) {
+    return data.nvidia_smi_gpus && data.nvidia_smi_gpus[0] ? data.nvidia_smi_gpus[0].name : '';
+}
+
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
 }
 
 // ========== 用户管理 ==========
@@ -467,12 +520,15 @@ function startGuideRegistration() {
 
     guideCurrentIndex = 0;
     guideResults = [];
-    guideAudioBlobs = [];
+    guideSegments = [];
 
     // 重置按钮状态
     document.getElementById('guide-skip-btn').style.display = 'inline-block';
-    document.getElementById('guide-finish-btn').style.display = 'none';
+    document.getElementById('guide-finish-btn').style.display = 'inline-block';
+    document.getElementById('guide-finish-btn').disabled = true;
     document.getElementById('guide-record-btn').disabled = false;
+    document.getElementById('guide-upload-btn').disabled = false;
+    document.getElementById('guide-processed-audio').style.display = 'none';
 
     fetch('/api/registration/texts')
         .then(r => r.json())
@@ -490,6 +546,7 @@ function loadGuideSegment(index) {
         document.getElementById('guide-quality').textContent = '所有段落录制完成，请点击"完成注册"';
         document.getElementById('guide-quality').style.color = '#1a73e8';
         document.getElementById('guide-record-btn').disabled = true;
+        document.getElementById('guide-upload-btn').disabled = true;
         document.getElementById('guide-skip-btn').style.display = 'none';
         document.getElementById('guide-finish-btn').style.display = 'inline-block';
         document.getElementById('guide-progress-text').textContent = `${guideResults.length}/${guideTexts.length} 完成`;
@@ -515,6 +572,7 @@ function loadGuideSegment(index) {
     btn.classList.remove('recording');
     btn.innerHTML = '<span class="record-icon"></span> 开始录音';
     btn.disabled = false;
+    document.getElementById('guide-upload-btn').disabled = false;
 }
 
 function toggleGuideRecording() {
@@ -535,25 +593,8 @@ function toggleGuideRecording() {
     }, 1000);
 
     startRecording(null, null, blob => {
-        const quality = evaluateRecordingQuality(blob, guideRecordSeconds);
-        // 暂存录音，不立即注册
-        guideAudioBlobs.push({ blob, index: guideCurrentIndex, quality });
-        guideResults.push({
-            index: guideCurrentIndex + 1,
-            text: guideTexts[guideCurrentIndex].text,
-            quality: quality
-        });
-
-        // 更新质量显示
-        const qualityEl = document.getElementById('guide-quality');
-        qualityEl.textContent = `质量: ${quality.quality_text} (${quality.duration.toFixed(1)}秒)`;
-        qualityEl.style.color = quality.score >= 85 ? '#4caf50' : quality.score >= 70 ? '#ff9800' : '#f44336';
-
-        // 更新结果列表
-        updateGuideResults();
-
-        // 自动进入下一段
-        setTimeout(() => loadGuideSegment(guideCurrentIndex + 1), 800);
+        const audioFile = new File([blob], `guide_${guideCurrentIndex + 1}.webm`, { type: 'audio/webm' });
+        processGuideAudio(audioFile, 'recording');
     }).then(recorder => {
         if (recorder) {
             guideMediaRecorder = recorder;
@@ -563,6 +604,68 @@ function toggleGuideRecording() {
             clearInterval(guideRecordTimer);
         }
     });
+}
+
+function processGuideAudio(audioFile, source) {
+    const userId = document.getElementById('guide-user').value;
+    if (!userId) { alert('请选择用户'); return; }
+    if (!guideTexts.length) { alert('请先开始引导注册'); return; }
+
+    const currentText = guideTexts[guideCurrentIndex] || { text: '', category: '', tone: '' };
+    const formData = new FormData();
+    formData.append('user_id', userId);
+    formData.append('audio', audioFile);
+    formData.append('source', source);
+    formData.append('prompt_index', guideCurrentIndex);
+    formData.append('prompt_text', currentText.text);
+
+    const qualityEl = document.getElementById('guide-quality');
+    qualityEl.textContent = '正在预处理音频...';
+    qualityEl.style.color = '#1a73e8';
+    document.getElementById('guide-record-btn').disabled = true;
+    document.getElementById('guide-upload-btn').disabled = true;
+
+    fetch('/api/voiceprint/enrollment/segment', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            const quality = data.quality;
+            const segment = {
+                token: data.token,
+                playback_url: data.url,
+                source,
+                prompt_index: guideCurrentIndex,
+                text: currentText.text || audioFile.name,
+                quality,
+            };
+            guideSegments.push(segment);
+            guideResults.push(segment);
+
+            const audio = document.getElementById('guide-processed-audio');
+            audio.src = data.url;
+            audio.style.display = 'block';
+
+            qualityEl.textContent = `质量: ${quality.quality_text} (${quality.score}分，有效语音 ${quality.effective_duration}s) · ${quality.message}`;
+            qualityEl.style.color = quality.score >= 85 ? '#4caf50' : quality.score >= 70 ? '#ff9800' : quality.score >= 60 ? '#1a73e8' : '#f44336';
+            document.getElementById('guide-finish-btn').disabled = guideSegments.length === 0;
+            updateGuideResults();
+
+            if (guideCurrentIndex < guideTexts.length - 1) {
+                setTimeout(() => loadGuideSegment(guideCurrentIndex + 1), 600);
+            } else {
+                setTimeout(() => loadGuideSegment(guideTexts.length), 600);
+            }
+        })
+        .catch(err => {
+            qualityEl.textContent = '预处理失败: ' + err.message;
+            qualityEl.style.color = '#f44336';
+        })
+        .finally(() => {
+            if (guideCurrentIndex < guideTexts.length) {
+                document.getElementById('guide-record-btn').disabled = false;
+                document.getElementById('guide-upload-btn').disabled = false;
+            }
+        });
 }
 
 function evaluateRecordingQuality(blob, duration) {
@@ -587,11 +690,19 @@ function updateGuideResults() {
     container.innerHTML = guideResults.map(r => {
         const qualityClass = r.quality.score >= 85 ? 'quality-good' : r.quality.score >= 70 ? 'quality-ok' : 'quality-bad';
         return `<div class="guide-result-item">
-            <span>#${r.index} ${r.text.substring(0, 15)}...</span>
-            <span>${r.quality.duration.toFixed(1)}s</span>
-            <span class="${qualityClass}">${r.quality.quality_text}</span>
+            <span>#${r.prompt_index + 1} ${escHtml(r.text).substring(0, 15)}...</span>
+            <span>${r.quality.effective_duration}s/${r.quality.duration}s</span>
+            <span class="${qualityClass}">${r.quality.quality_text} ${r.quality.score}</span>
+            <button class="btn btn-sm btn-secondary" onclick="playGuideProcessed('${r.playback_url}')">播放</button>
         </div>`;
     }).join('');
+}
+
+function playGuideProcessed(url) {
+    const audio = document.getElementById('guide-processed-audio');
+    audio.src = url;
+    audio.style.display = 'block';
+    audio.play();
 }
 
 function skipGuideSegment() {
@@ -601,28 +712,32 @@ function skipGuideSegment() {
 }
 
 function finishGuideRegistration() {
-    const count = guideAudioBlobs.length;
+    const count = guideSegments.length;
     if (count === 0) {
-        alert('没有录到任何有效数据，请至少录制一段');
+        alert('没有可提交的音频片段，请至少录制或上传一段');
         return;
     }
 
     const avgScore = guideResults.reduce((sum, r) => sum + r.quality.score, 0) / count;
-    const qualityMsg = avgScore >= 75 ? '优秀' : avgScore >= 60 ? '良好' : '一般';
+    const qualityMsg = avgScore >= 85 ? '优秀' : avgScore >= 70 ? '良好' : avgScore >= 60 ? '可用' : '需补录';
 
-    // 构建FormData，包含所有录音
     const userId = document.getElementById('guide-user').value;
     const formData = new FormData();
     formData.append('user_id', userId);
-    guideAudioBlobs.forEach((item, i) => {
-        formData.append('audios', new File([item.blob], `guide_${item.index}.webm`, { type: 'audio/webm' }));
-    });
+    formData.append('segments', JSON.stringify(guideSegments.map(s => ({
+        token: s.token,
+        source: s.source,
+        prompt_index: s.prompt_index,
+        prompt_text: s.text,
+    }))));
 
     // 显示提交状态
     const qualityEl = document.getElementById('guide-quality');
-    qualityEl.textContent = '正在融合声纹...';
+    qualityEl.textContent = '正在进行质量门控、一致性校验和声纹融合...';
     qualityEl.style.color = '#1a73e8';
     document.getElementById('guide-record-btn').disabled = true;
+    document.getElementById('guide-upload-btn').disabled = true;
+    document.getElementById('guide-finish-btn').disabled = true;
 
     fetch('/api/voiceprint/register-batch', { method: 'POST', body: formData })
         .then(r => r.json())
@@ -631,12 +746,19 @@ function finishGuideRegistration() {
                 alert('注册失败: ' + data.error);
             } else {
                 document.getElementById('guide-area').style.display = 'none';
-                alert(`声纹注册完成！\n\n录制段落: ${count}/${guideTexts.length}\n平均质量: ${qualityMsg}\n\n${count}条录音已融合为一个声纹模型，识别将更加准确。`);
+                alert(`声纹注册完成！\n\n本次提交: ${count}段\n成功融合: ${data.success}段\n累计融合: ${data.total_segments}段\n平均质量: ${qualityMsg}\n\n后续可继续选择该用户追加上传或录制，系统会继续融合。`);
+                guideSegments = [];
+                guideResults = [];
                 loadUsers();
+                checkModelStatus();
             }
         })
         .catch(err => alert('注册失败: ' + err))
-        .finally(() => document.getElementById('guide-record-btn').disabled = false);
+        .finally(() => {
+            document.getElementById('guide-record-btn').disabled = false;
+            document.getElementById('guide-upload-btn').disabled = false;
+            document.getElementById('guide-finish-btn').disabled = guideSegments.length === 0;
+        });
 }
 
 // ========== 工具函数 ==========

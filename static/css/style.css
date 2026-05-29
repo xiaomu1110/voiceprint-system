@@ -101,40 +101,56 @@ body {
     50% { opacity: 0.4; }
 }
 
-/* ========== 标签导航 ========== */
-.tab-nav {
+/* ========== 页面框架与侧边栏 ========== */
+.app-shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    min-height: calc(100vh - 64px);
+}
+
+.sidebar {
     background: white;
+    border-right: 1px solid #e0e0e0;
+    padding: 16px 12px;
+}
+
+.tab-nav {
     display: flex;
-    border-bottom: 2px solid #e0e0e0;
-    padding: 0 24px;
+    flex-direction: column;
+    gap: 6px;
+    position: sticky;
+    top: 16px;
 }
 
 .tab-btn {
-    padding: 14px 24px;
+    width: 100%;
+    padding: 12px 14px;
     border: none;
-    background: none;
+    background: transparent;
+    border-radius: 8px;
     font-size: 15px;
     color: #666;
     cursor: pointer;
-    border-bottom: 3px solid transparent;
     transition: all 0.2s;
     font-weight: 500;
+    text-align: left;
 }
 
 .tab-btn:hover {
     color: #1a73e8;
+    background: #f2f6ff;
 }
 
 .tab-btn.active {
+    background: #e8f1ff;
     color: #1a73e8;
-    border-bottom-color: #1a73e8;
 }
 
 /* ========== 内容区 ========== */
 .tab-content {
-    padding: 20px 24px;
-    max-width: 1200px;
-    margin: 0 auto;
+    padding: 24px;
+    width: 100%;
+    max-width: 1240px;
 }
 
 .tab-panel {
@@ -143,6 +159,48 @@ body {
 
 .tab-panel.active {
     display: block;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.status-item {
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fafafa;
+    min-width: 0;
+}
+
+.status-label {
+    display: block;
+    color: #666;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.status-item strong {
+    display: block;
+    color: #222;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.status-detail {
+    margin-top: 12px;
+    padding: 12px;
+    background: #f6f8fa;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    color: #444;
+    font-family: "Consolas", "SFMono-Regular", monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
 }
 
 /* ========== 卡片 ========== */
@@ -535,9 +593,17 @@ input[type="range"] {
 .guide-result-item {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    gap: 8px;
     padding: 6px 0;
     border-bottom: 1px solid #f0f0f0;
     font-size: 13px;
+}
+
+.guide-result-item span:first-child {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .guide-result-item .quality-good { color: #4caf50; }
@@ -558,7 +624,19 @@ input[type="range"] {
         gap: 8px;
     }
 
+    .app-shell {
+        display: block;
+    }
+
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+        padding: 8px 12px;
+    }
+
     .tab-nav {
+        position: static;
+        flex-direction: row;
         overflow-x: auto;
     }
 
@@ -566,10 +644,16 @@ input[type="range"] {
         padding: 10px 16px;
         font-size: 13px;
         white-space: nowrap;
+        width: auto;
+        text-align: center;
     }
 
     .tab-content {
         padding: 12px;
+    }
+
+    .status-grid {
+        grid-template-columns: 1fr;
     }
 
     .panel-grid {

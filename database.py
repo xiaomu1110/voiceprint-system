@@ -46,6 +46,27 @@ class DatabaseManager:
                 user_id INTEGER NOT NULL,
                 embedding BLOB NOT NULL,
                 audio_path TEXT,
+                sample_count INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS enrollment_segments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                embedding BLOB NOT NULL,
+                audio_path TEXT NOT NULL,
+                source TEXT,
+                prompt_index INTEGER,
+                prompt_text TEXT,
+                quality_score REAL,
+                effective_duration REAL,
+                duration REAL,
+                rms REAL,
+                clipping_ratio REAL,
+                snr_db REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
@@ -64,8 +85,15 @@ class DatabaseManager:
             )
         ''')
         
+        self._ensure_column(cursor, "voiceprints", "sample_count", "INTEGER DEFAULT 1")
         conn.commit()
         conn.close()
+
+    def _ensure_column(self, cursor, table, column, definition):
+        cursor.execute(f"PRAGMA table_info({table})")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if column not in columns:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     
     def add_user(self, name, department=""):
         """添加用户"""
@@ -97,6 +125,21 @@ class DatabaseManager:
         users = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return users
+
+    def get_stats(self):
+        """获取系统数据统计"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        stats = {}
+        for table, key in (
+            ("users", "users"),
+            ("voiceprints", "voiceprints"),
+            ("verify_logs", "verify_logs"),
+        ):
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            stats[key] = cursor.fetchone()[0]
+        conn.close()
+        return stats
     
     def delete_user(self, user_id):
         """删除用户及其声纹"""
@@ -106,6 +149,8 @@ class DatabaseManager:
         # 删除用户的音频文件
         cursor.execute("SELECT audio_path FROM voiceprints WHERE user_id = ?", (user_id,))
         audio_files = cursor.fetchall()
+        cursor.execute("SELECT audio_path FROM enrollment_segments WHERE user_id = ?", (user_id,))
+        audio_files += cursor.fetchall()
         for row in audio_files:
             if row['audio_path'] and os.path.exists(row['audio_path']):
                 try:
@@ -114,6 +159,7 @@ class DatabaseManager:
                     pass
         
         # 删除声纹记录
+        cursor.execute("DELETE FROM enrollment_segments WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM voiceprints WHERE user_id = ?", (user_id,))
         # 删除用户
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -121,7 +167,7 @@ class DatabaseManager:
         conn.commit()
         conn.close()
     
-    def add_voiceprint(self, user_id, embedding, audio_path=None):
+    def add_voiceprint(self, user_id, embedding, audio_path=None, sample_count=1):
         """添加声纹特征"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -130,15 +176,15 @@ class DatabaseManager:
         embedding_bytes = embedding.tobytes()
         
         cursor.execute(
-            "INSERT INTO voiceprints (user_id, embedding, audio_path) VALUES (?, ?, ?)",
-            (user_id, embedding_bytes, audio_path)
+            "INSERT INTO voiceprints (user_id, embedding, audio_path, sample_count) VALUES (?, ?, ?, ?)",
+            (user_id, embedding_bytes, audio_path, sample_count)
         )
         vp_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return vp_id
 
-    def replace_voiceprint(self, user_id, embedding, audio_path=None):
+    def replace_voiceprint(self, user_id, embedding, audio_path=None, sample_count=1):
         """删除用户旧声纹，存入新的单一声纹"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -158,13 +204,58 @@ class DatabaseManager:
         # 存入新声纹
         embedding_bytes = embedding.tobytes()
         cursor.execute(
-            "INSERT INTO voiceprints (user_id, embedding, audio_path) VALUES (?, ?, ?)",
-            (user_id, embedding_bytes, audio_path)
+            "INSERT INTO voiceprints (user_id, embedding, audio_path, sample_count) VALUES (?, ?, ?, ?)",
+            (user_id, embedding_bytes, audio_path, sample_count)
         )
         vp_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return vp_id
+
+    def add_enrollment_segment(self, user_id, embedding, audio_path, metadata=None):
+        """添加注册音频片段及其声纹特征"""
+        metadata = metadata or {}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            INSERT INTO enrollment_segments (
+                user_id, embedding, audio_path, source, prompt_index, prompt_text,
+                quality_score, effective_duration, duration, rms, clipping_ratio, snr_db
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                user_id,
+                embedding.tobytes(),
+                audio_path,
+                metadata.get("source"),
+                metadata.get("prompt_index"),
+                metadata.get("prompt_text"),
+                metadata.get("quality_score"),
+                metadata.get("effective_duration"),
+                metadata.get("duration"),
+                metadata.get("rms"),
+                metadata.get("clipping_ratio"),
+                metadata.get("snr_db"),
+            )
+        )
+        segment_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return segment_id
+
+    def get_enrollment_segments(self, user_id):
+        """获取用户已提交的注册音频片段"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM enrollment_segments WHERE user_id = ? ORDER BY created_at ASC", (user_id,))
+        segments = []
+        for row in cursor.fetchall():
+            seg = dict(row)
+            seg['embedding'] = np.frombuffer(seg['embedding'], dtype=np.float32)
+            segments.append(seg)
+        conn.close()
+        return segments
     
     def get_voiceprints(self, user_id):
         """获取用户的所有声纹特征"""

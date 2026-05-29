@@ -2,7 +2,7 @@
 Voiceprint System - Environment Doctor
 
 Checks whether the current environment is ready to run the system.
-Run: uv run python scripts/doctor.py
+Run: uv run --no-sync python scripts/doctor.py
 """
 import importlib
 import os
@@ -58,7 +58,7 @@ def check_ffmpeg() -> list[str]:
 def check_nvidia_smi() -> list[str]:
     """Check if nvidia-smi is available and parse GPU info."""
     if not _cmd_exists("nvidia-smi"):
-        return [_warn("nvidia-smi not found (no NVIDIA GPU or driver not installed)")]
+        return [_fail("nvidia-smi not found (NVIDIA GPU + driver are required)")]
     try:
         r = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
                            capture_output=True, text=True, timeout=10)
@@ -119,6 +119,8 @@ def check_torch_detail() -> list[str]:
             _check(f"torch version: {torch.__version__}"),
             _check(f"torch.version.cuda: {torch.version.cuda or 'None (CPU build)'}"),
         ]
+        if not torch.version.cuda:
+            lines.append(_fail("CPU-only PyTorch build is installed; CUDA build is required"))
         if torch.cuda.is_available():
             name = torch.cuda.get_device_name(0)
             count = torch.cuda.device_count()
@@ -127,8 +129,8 @@ def check_torch_detail() -> list[str]:
             lines.append(_check(f"GPU name: {name}"))
             lines.append(_check(f"Runtime mode: GPU"))
         else:
-            lines.append(_warn("CUDA available: False"))
-            lines.append(_warn("Runtime mode: CPU"))
+            lines.append(_fail("CUDA available: False"))
+            lines.append(_fail("Runtime mode: CPU is unsupported"))
         return lines
     except Exception as e:
         return [_fail(f"torch check failed: {e}")]
@@ -205,7 +207,7 @@ def main() -> int:
         print("=" * 50)
         return 1
     print("  Environment ready!")
-    print("  Run: uv run python web_server.py")
+    print("  Run: uv run --no-sync python web_server.py")
     print("=" * 50)
     return 0
 

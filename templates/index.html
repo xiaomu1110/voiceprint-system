@@ -49,16 +49,57 @@
             </div>
         </div>
 
-        <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="users">用户管理</button>
-            <button class="tab-btn" data-tab="register">声纹注册</button>
-            <button class="tab-btn" data-tab="verify">身份验证</button>
-            <button class="tab-btn" data-tab="logs">验证日志</button>
-        </nav>
+        <div class="app-shell">
+            <aside class="sidebar">
+                <nav class="tab-nav">
+                    <button class="tab-btn active" data-tab="status">系统状态</button>
+                    <button class="tab-btn" data-tab="users">用户管理</button>
+                    <button class="tab-btn" data-tab="register">声纹注册</button>
+                    <button class="tab-btn" data-tab="verify">身份验证</button>
+                    <button class="tab-btn" data-tab="logs">验证日志</button>
+                </nav>
+            </aside>
 
-        <main class="tab-content">
+            <main class="tab-content">
+            <!-- 系统状态 -->
+            <section id="tab-status" class="tab-panel active">
+                <div class="card system-card">
+                    <div class="card-header">
+                        <h3>系统运行状态</h3>
+                        <button class="btn btn-secondary" onclick="checkModelStatus()">刷新状态</button>
+                    </div>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <span class="status-label">运行模式</span>
+                            <strong id="runtime-mode">检测中</strong>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">GPU 设备</span>
+                            <strong id="gpu-device">检测中</strong>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">CUDA 状态</span>
+                            <strong id="cuda-state">检测中</strong>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">PyTorch</span>
+                            <strong id="torch-state">检测中</strong>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">模型</span>
+                            <strong id="model-state">加载中</strong>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">数据</span>
+                            <strong id="data-state">统计中</strong>
+                        </div>
+                    </div>
+                    <div id="gpu-detail" class="status-detail"></div>
+                </div>
+            </section>
+
             <!-- 用户管理 -->
-            <section id="tab-users" class="tab-panel active">
+            <section id="tab-users" class="tab-panel">
                 <div class="panel-grid">
                     <div class="card">
                         <h3>添加用户</h3>
@@ -154,10 +195,13 @@
                                     <span class="record-icon"></span> 开始录音
                                 </button>
                                 <span id="guide-record-time" class="record-time">00:00</span>
+                                <input type="file" id="guide-file" accept="audio/*" hidden>
+                                <button id="guide-upload-btn" class="btn btn-secondary" onclick="document.getElementById('guide-file').click()">上传本段</button>
                                 <button id="guide-skip-btn" class="btn btn-secondary" onclick="skipGuideSegment()">跳过</button>
                                 <button id="guide-finish-btn" class="btn btn-primary" onclick="finishGuideRegistration()" style="display:none;">完成注册</button>
                             </div>
                             <div id="guide-quality" class="quality-indicator"></div>
+                            <audio id="guide-processed-audio" controls style="display:none; width:100%; margin-bottom:12px;"></audio>
                             <div id="guide-results" class="guide-results"></div>
                         </div>
                     </div>
@@ -248,7 +292,8 @@
                     <div id="logs-stats" class="logs-stats"></div>
                 </div>
             </section>
-        </main>
+            </main>
+        </div>
     </div>
 
     <script src="/static/js/app.js"></script>

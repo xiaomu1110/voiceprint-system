@@ -1,7 +1,7 @@
 [project]
 name = "voiceprint-system"
 version = "1.2.0"
-description = "ECAPA-TDNN based voiceprint recognition system with GPU auto-detection"
+description = "ECAPA-TDNN based voiceprint recognition system with required GPU acceleration"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "flask>=3.0.0",
@@ -13,9 +13,8 @@ dependencies = [
     "speechbrain>=0.5.14",
 ]
 
-# torch and torchaudio are installed by scripts/bootstrap.py
-# based on GPU detection (CUDA or CPU wheel).
-# Do NOT add them here — uv sync would always install the CPU version.
+# torch and torchaudio are installed by scripts/bootstrap.py from the CUDA wheel index.
+# Do not rely on CPU wheels; runtime validation rejects CPU-only PyTorch.
 
 [tool.uv]
 package = false

@@ -23,14 +23,17 @@ import threading
 import tempfile
 import uuid
 import json
-from datetime import datetime
 
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
+import soundfile as sf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import SIMILARITY_THRESHOLD, SAMPLE_RATE, AUDIO_DIR, MODEL_DIR, HOST, PORT, DEBUG
+from config import (
+    SIMILARITY_THRESHOLD, SAMPLE_RATE, AUDIO_DIR, MODEL_DIR, HOST, PORT, DEBUG,
+    MODEL_NAME, CUDA_DEVICE_INDEX,
+)
 from database import DatabaseManager
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -42,18 +45,30 @@ vp_database = None
 model_loaded = False
 model_error = None
 device_info = {}
+SUPPORTED_AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus', '.webm'}
+ENROLLMENT_AUDIO_DIR = os.path.join(AUDIO_DIR, "enrollment")
 
 
 def load_model_async():
     global extractor, vp_database, model_loaded, model_error, device_info
     try:
-        from voiceprint import VoiceprintExtractor, VoiceprintDatabase
+        from voiceprint import VoiceprintExtractor, VoiceprintDatabase, get_gpu_diagnostics
+        device_info = get_gpu_diagnostics()
         extractor = VoiceprintExtractor()
         vp_database = VoiceprintDatabase(db_manager, extractor)
         device_info = extractor.get_device_info()
         model_loaded = True
     except Exception as e:
         model_error = str(e)
+        try:
+            from voiceprint import get_gpu_diagnostics
+            device_info = get_gpu_diagnostics()
+        except Exception as diagnostic_error:
+            device_info = {
+                "requires_gpu": True,
+                "device_policy": "gpu_required",
+                "diagnostic_error": str(diagnostic_error),
+            }
 
 
 threading.Thread(target=load_model_async, daemon=True).start()
@@ -75,13 +90,51 @@ def static_files(filename):
 
 @app.route('/api/status')
 def get_status():
+    stats = db_manager.get_stats()
     return jsonify({
+        'status': 'ready' if model_loaded else ('error' if model_error else 'loading'),
         'model_loaded': model_loaded,
         'model_error': model_error,
+        'model_name': MODEL_NAME,
+        'runtime_requirement': 'NVIDIA CUDA GPU required',
         'similarity_threshold': SIMILARITY_THRESHOLD,
         'sample_rate': SAMPLE_RATE,
+        'cuda_device_index': CUDA_DEVICE_INDEX,
+        'data': {
+            'users': stats['users'],
+            'voiceprints': stats['voiceprints'],
+            'verify_logs': stats['verify_logs'],
+            'audio_dir': AUDIO_DIR,
+            'model_dir': MODEL_DIR,
+        },
         **device_info,
     })
+
+
+def model_not_ready_response():
+    if model_error:
+        return jsonify({'error': f'GPU 模型加载失败: {model_error}'}), 503
+    return jsonify({'error': '声纹识别模型尚未加载完成，请稍候'}), 503
+
+
+def get_enrollment_dir(user_id):
+    path = os.path.join(ENROLLMENT_AUDIO_DIR, str(user_id))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def validate_audio_ext(filename):
+    ext = os.path.splitext(filename or '')[1].lower()
+    if ext not in SUPPORTED_AUDIO_EXTS:
+        raise ValueError(f'不支持的音频格式: {ext or "未知"}')
+    return ext
+
+
+def quality_from_processed_file(path):
+    audio, sr = sf.read(path, dtype='float32')
+    if len(audio.shape) > 1:
+        audio = audio.mean(axis=1)
+    return extractor.evaluate_audio_quality(audio, sr)
 
 
 # ========== 数据重置 API ==========
@@ -125,11 +178,12 @@ def get_users():
     result = []
     for user in users:
         voiceprints = db_manager.get_voiceprints(user['id'])
+        segments = db_manager.get_enrollment_segments(user['id'])
         result.append({
             'id': user['id'],
             'name': user['name'],
             'department': user['department'] or '',
-            'voiceprint_count': len(voiceprints),
+            'voiceprint_count': len(segments) if segments else len(voiceprints),
             'created_at': user['created_at']
         })
     return jsonify(result)
@@ -190,7 +244,7 @@ def delete_voiceprint(vp_id):
 @app.route('/api/voiceprint/register', methods=['POST'])
 def register_voiceprint():
     if not model_loaded:
-        return jsonify({'error': '声纹识别模型尚未加载完成，请稍候'}), 503
+        return model_not_ready_response()
 
     user_id = request.form.get('user_id', type=int)
     if not user_id:
@@ -208,7 +262,7 @@ def register_voiceprint():
         return jsonify({'error': '请上传音频文件'}), 400
 
     ext = os.path.splitext(audio_file.filename)[1].lower()
-    if ext not in {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus', '.webm'}:
+    if ext not in SUPPORTED_AUDIO_EXTS:
         return jsonify({'error': f'不支持的音频格式: {ext}'}), 400
 
     temp_path = None
@@ -216,16 +270,30 @@ def register_voiceprint():
         temp_path = os.path.join(tempfile.gettempdir(), f"vp_reg_{uuid.uuid4().hex}{ext}")
         audio_file.save(temp_path)
 
-        filename = f"{user_id}_{uuid.uuid4().hex[:8]}.wav"
-        dest_path = os.path.join(AUDIO_DIR, filename)
-
-        vp_id = vp_database.register_voiceprint(user_id, temp_path)
+        token = f"{uuid.uuid4().hex}.wav"
+        output_path = os.path.join(get_enrollment_dir(user_id), token)
+        quality = extractor.prepare_enrollment_audio(temp_path, output_path)
+        result = vp_database.batch_register_voiceprint(user_id, [{
+            'path': output_path,
+            'metadata': {
+                'source': 'single',
+                'prompt_text': audio_file.filename,
+                'quality_score': quality['score'],
+                'effective_duration': quality['effective_duration'],
+                'duration': quality['duration'],
+                'rms': quality['rms'],
+                'clipping_ratio': quality['clipping_ratio'],
+                'snr_db': quality['snr_db'],
+            }
+        }])
 
         return jsonify({
-            'id': vp_id,
+            'id': result['vp_id'],
             'user_id': user_id,
             'user_name': user['name'],
-            'message': '声纹注册成功'
+            'quality': quality,
+            'total_segments': result['total_segments'],
+            'message': f'声纹注册成功（累计融合 {result["total_segments"]} 段）'
         }), 201
 
     except Exception as e:
@@ -244,7 +312,7 @@ def register_voiceprint():
 @app.route('/api/voiceprint/identify', methods=['POST'])
 def identify_speaker():
     if not model_loaded:
-        return jsonify({'error': '声纹识别模型尚未加载完成，请稍候'}), 503
+        return model_not_ready_response()
 
     if 'audio' not in request.files:
         return jsonify({'error': '请上传音频文件'}), 400
@@ -300,7 +368,7 @@ def identify_speaker():
 @app.route('/api/voiceprint/verify', methods=['POST'])
 def verify_speaker():
     if not model_loaded:
-        return jsonify({'error': '声纹识别模型尚未加载完成，请稍候'}), 503
+        return model_not_ready_response()
 
     user_id = request.form.get('user_id', type=int)
     if not user_id:
@@ -393,11 +461,66 @@ def get_registration_texts():
     return jsonify(REGISTRATION_TEXTS)
 
 
+@app.route('/api/voiceprint/enrollment/segment', methods=['POST'])
+def prepare_enrollment_segment():
+    """上传一段注册音频，生成处理后的可播放 WAV，并返回质量评估。"""
+    if not model_loaded:
+        return model_not_ready_response()
+
+    user_id = request.form.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'error': '请选择用户'}), 400
+    if not db_manager.get_user(user_id):
+        return jsonify({'error': '用户不存在'}), 404
+    if 'audio' not in request.files:
+        return jsonify({'error': '请上传音频文件'}), 400
+
+    audio_file = request.files['audio']
+    if not audio_file.filename:
+        return jsonify({'error': '请上传音频文件'}), 400
+
+    temp_path = None
+    try:
+        ext = validate_audio_ext(audio_file.filename)
+        temp_path = os.path.join(tempfile.gettempdir(), f"vp_stage_{uuid.uuid4().hex}{ext}")
+        audio_file.save(temp_path)
+
+        token = f"{uuid.uuid4().hex}.wav"
+        output_dir = get_enrollment_dir(user_id)
+        output_path = os.path.join(output_dir, token)
+        quality = extractor.prepare_enrollment_audio(temp_path, output_path)
+
+        return jsonify({
+            'token': token,
+            'url': f'/api/voiceprint/enrollment/audio/{user_id}/{token}',
+            'quality': quality,
+            'sample_rate': SAMPLE_RATE,
+            'prompt_index': request.form.get('prompt_index', type=int),
+            'prompt_text': request.form.get('prompt_text', ''),
+            'source': request.form.get('source', 'upload'),
+        })
+    except Exception as e:
+        return jsonify({'error': f'音频预处理失败: {str(e)}'}), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+
+@app.route('/api/voiceprint/enrollment/audio/<int:user_id>/<path:filename>')
+def get_enrollment_audio(user_id, filename):
+    """播放处理后的注册音频。"""
+    safe_name = os.path.basename(filename)
+    return send_from_directory(get_enrollment_dir(user_id), safe_name, mimetype='audio/wav')
+
+
 @app.route('/api/voiceprint/register-batch', methods=['POST'])
 def register_voiceprint_batch():
-    """批量注册声纹：多条录音提取embedding后取平均，融合为一个声纹向量"""
+    """批量/增量注册声纹：新片段与该用户历史片段持续融合为一个声纹档案。"""
     if not model_loaded:
-        return jsonify({'error': '声纹识别模型尚未加载完成，请稍候'}), 503
+        return model_not_ready_response()
 
     user_id = request.form.get('user_id', type=int)
     if not user_id:
@@ -408,33 +531,85 @@ def register_voiceprint_batch():
         return jsonify({'error': '用户不存在'}), 404
 
     files = request.files.getlist('audios')
-    if not files:
-        return jsonify({'error': '请上传音频文件'}), 400
+    staged_segments = []
+    if request.form.get('segments'):
+        try:
+            staged_segments = json.loads(request.form.get('segments'))
+            if isinstance(staged_segments, dict):
+                staged_segments = [staged_segments]
+            if not isinstance(staged_segments, list):
+                return jsonify({'error': '片段数据格式错误'}), 400
+        except json.JSONDecodeError:
+            return jsonify({'error': '片段数据格式错误'}), 400
+
+    if not files and not staged_segments:
+        return jsonify({'error': '请上传音频文件或提交已处理片段'}), 400
 
     temp_paths = []
-    results = []
+    audio_items = []
     try:
+        for segment in staged_segments:
+            token = os.path.basename(segment.get('token', ''))
+            if not token:
+                continue
+            path = os.path.join(get_enrollment_dir(user_id), token)
+            if not os.path.exists(path):
+                return jsonify({'error': f'已处理片段不存在: {token}'}), 400
+            quality = quality_from_processed_file(path)
+            audio_items.append({
+                'path': path,
+                'metadata': {
+                    'source': segment.get('source', 'upload'),
+                    'prompt_index': segment.get('prompt_index'),
+                    'prompt_text': segment.get('prompt_text', ''),
+                    'quality_score': quality['score'],
+                    'effective_duration': quality['effective_duration'],
+                    'duration': quality['duration'],
+                    'rms': quality['rms'],
+                    'clipping_ratio': quality['clipping_ratio'],
+                    'snr_db': quality['snr_db'],
+                }
+            })
+
         for audio_file in files:
-            ext = os.path.splitext(audio_file.filename)[1].lower() or '.wav'
+            ext = validate_audio_ext(audio_file.filename)
             temp_path = os.path.join(tempfile.gettempdir(), f"vp_batch_{uuid.uuid4().hex}{ext}")
             audio_file.save(temp_path)
             temp_paths.append(temp_path)
-            results.append({'filename': audio_file.filename, 'success': True})
 
-        # 多条录音融合为一个声纹向量
-        vp_id = vp_database.batch_register_voiceprint(user_id, temp_paths)
+            token = f"{uuid.uuid4().hex}.wav"
+            output_path = os.path.join(get_enrollment_dir(user_id), token)
+            quality = extractor.prepare_enrollment_audio(temp_path, output_path)
+            audio_items.append({
+                'path': output_path,
+                'metadata': {
+                    'source': 'upload',
+                    'prompt_text': audio_file.filename,
+                    'quality_score': quality['score'],
+                    'effective_duration': quality['effective_duration'],
+                    'duration': quality['duration'],
+                    'rms': quality['rms'],
+                    'clipping_ratio': quality['clipping_ratio'],
+                    'snr_db': quality['snr_db'],
+                }
+            })
+
+        result = vp_database.batch_register_voiceprint(user_id, audio_items)
 
         return jsonify({
-            'total': len(files),
-            'success': len(files),
-            'failed': 0,
-            'vp_id': vp_id,
+            'total': len(audio_items),
+            'success': result['added_segments'],
+            'failed': len(result['rejected']),
+            'vp_id': result['vp_id'],
+            'segment_ids': result['segment_ids'],
+            'total_segments': result['total_segments'],
+            'rejected': result['rejected'],
             'user_name': user['name'],
-            'message': f'声纹注册成功（{len(files)}条录音已融合）'
+            'message': f'声纹注册成功（新增 {result["added_segments"]} 段，累计融合 {result["total_segments"]} 段）'
         })
 
     except Exception as e:
-        return jsonify({'error': f'声纹注册失败: {str(e)}', 'total': len(files), 'success': 0, 'failed': len(files)}), 500
+        return jsonify({'error': f'声纹注册失败: {str(e)}', 'total': len(files) + len(staged_segments), 'success': 0, 'failed': len(files) + len(staged_segments)}), 500
 
     finally:
         for p in temp_paths:
@@ -449,7 +624,8 @@ def main():
     print("=" * 50)
     print("Voiceprint Recognition System")
     print("=" * 50)
-    print(f"Loading voiceprint model...")
+    print("GPU mode only: NVIDIA CUDA is required")
+    print("Loading voiceprint model...")
     print(f"Listening on http://{HOST}:{PORT}")
     print("=" * 50)
     app.run(host=HOST, port=PORT, debug=DEBUG, threaded=True)
