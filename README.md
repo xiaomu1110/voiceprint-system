@@ -22,33 +22,23 @@
 
 ## 快速开始
 
-### 方式一：本地运行
-
 ```bash
 # 克隆仓库
-git clone https://github.com/YOUR_USERNAME/voiceprint-system.git
+git clone https://github.com/xiaomu1110/voiceprint-system.git
 cd voiceprint-system
+
+# 安装系统依赖（Ubuntu/Debian）
+sudo apt-get install -y libsndfile1 ffmpeg
 
 # 创建虚拟环境
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 安装依赖
+# 安装 Python 依赖
 pip install -r requirements.txt
 
 # 启动服务
 python3 web_server.py
-
-# 访问 http://localhost:5000
-```
-
-### 方式二：Docker 部署
-
-```bash
-git clone https://github.com/YOUR_USERNAME/voiceprint-system.git
-cd voiceprint-system
-
-docker-compose up -d
 
 # 访问 http://localhost:5000
 ```

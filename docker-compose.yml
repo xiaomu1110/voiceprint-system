@@ -1,6 +1,8 @@
 services:
   voiceprint:
-    build: .
+    build:
+      context: .
+      network: host
     container_name: voiceprint-system
     volumes:
       - ./data:/app/data
