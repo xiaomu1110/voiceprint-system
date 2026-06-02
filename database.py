@@ -4,6 +4,7 @@
 使用 SQLite 存储用户信息、声纹特征向量和验证日志。
 声纹特征以 numpy float32 数组的二进制形式存储在 BLOB 字段中。
 """
+import json
 import sqlite3
 import numpy as np
 import os
@@ -86,6 +87,12 @@ class DatabaseManager:
         ''')
         
         self._ensure_column(cursor, "voiceprints", "sample_count", "INTEGER DEFAULT 1")
+        self._ensure_column(cursor, "verify_logs", "mode", "TEXT DEFAULT 'identify'")
+        self._ensure_column(cursor, "verify_logs", "normalized_confidence", "REAL")
+        self._ensure_column(cursor, "verify_logs", "threshold", "REAL")
+        self._ensure_column(cursor, "verify_logs", "threshold_type", "TEXT")
+        self._ensure_column(cursor, "verify_logs", "candidate_count", "INTEGER DEFAULT 0")
+        self._ensure_column(cursor, "verify_logs", "candidates_json", "TEXT")
         conn.commit()
         conn.close()
 
@@ -94,6 +101,29 @@ class DatabaseManager:
         columns = {row["name"] for row in cursor.fetchall()}
         if column not in columns:
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    @staticmethod
+    def _normalize_verify_result(result):
+        value = str(result or "").strip().lower()
+        if value in {"match", "matched", "matches", "匹配", "通过", "success", "ok", "true", "yes", "1"}:
+            return "match"
+        if value in {"no match", "nomatch", "no_match", "not match", "未匹配", "失败", "false", "no", "0"}:
+            return "no_match"
+        return value or "no_match"
+
+    @staticmethod
+    def _verify_result_label(result_code):
+        return "匹配" if result_code == "match" else "未匹配"
+
+    @staticmethod
+    def _mode_label(mode):
+        return "身份验证" if mode == "verify" else "身份识别"
+
+    @staticmethod
+    def _threshold_type_label(threshold_type, mode):
+        if threshold_type == "normalized_confidence" or mode == "identify":
+            return "归一化置信度"
+        return "原始相似度"
     
     def add_user(self, name, department=""):
         """添加用户"""
@@ -306,13 +336,44 @@ class DatabaseManager:
         conn.commit()
         conn.close()
     
-    def add_verify_log(self, user_id, similarity, result, audio_path=None):
+    def add_verify_log(
+        self,
+        user_id,
+        similarity,
+        result,
+        audio_path=None,
+        normalized_confidence=None,
+        threshold=None,
+        threshold_type=None,
+        mode="identify",
+        candidate_count=0,
+        candidates=None,
+    ):
         """添加验证日志"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        candidates_json = None
+        if candidates is not None:
+            candidates_json = json.dumps(candidates, ensure_ascii=False)
         cursor.execute(
-            "INSERT INTO verify_logs (user_id, similarity, result, audio_path) VALUES (?, ?, ?, ?)",
-            (user_id, similarity, result, audio_path)
+            """
+            INSERT INTO verify_logs (
+                user_id, similarity, result, audio_path, mode,
+                normalized_confidence, threshold, threshold_type, candidate_count, candidates_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                similarity,
+                result,
+                audio_path,
+                mode,
+                normalized_confidence,
+                threshold,
+                threshold_type,
+                candidate_count or 0,
+                candidates_json,
+            )
         )
         conn.commit()
         conn.close()
@@ -328,7 +389,42 @@ class DatabaseManager:
             ORDER BY l.created_at DESC 
             LIMIT ?
         ''', (limit,))
-        logs = [dict(row) for row in cursor.fetchall()]
+        logs = []
+        for row in cursor.fetchall():
+            log = dict(row)
+            result_code = self._normalize_verify_result(log.get("result"))
+            log["result_code"] = result_code
+            log["result_label"] = self._verify_result_label(result_code)
+            log["result"] = log["result_label"]
+            mode = (log.get("mode") or "identify").strip().lower()
+            if mode not in {"identify", "verify"}:
+                mode = "identify"
+            log["mode_code"] = mode
+            log["mode_label"] = self._mode_label(mode)
+            if log.get("similarity") is not None:
+                log["similarity"] = float(log["similarity"])
+            if log.get("normalized_confidence") is not None:
+                log["normalized_confidence"] = float(log["normalized_confidence"])
+            if log.get("threshold") is not None:
+                log["threshold"] = float(log["threshold"])
+            threshold_type = log.get("threshold_type") or (
+                "normalized_confidence" if mode == "identify" else "raw_similarity"
+            )
+            log["threshold_type"] = threshold_type
+            log["threshold_type_label"] = self._threshold_type_label(threshold_type, mode)
+            if log.get("candidate_count") is not None:
+                log["candidate_count"] = int(log["candidate_count"])
+            else:
+                log["candidate_count"] = 0
+            candidates_json = log.get("candidates_json")
+            if candidates_json:
+                try:
+                    log["candidates"] = json.loads(candidates_json)
+                except json.JSONDecodeError:
+                    log["candidates"] = []
+            else:
+                log["candidates"] = []
+            logs.append(log)
         conn.close()
         return logs
     

@@ -16,7 +16,7 @@ import soundfile as sf
 from scipy.signal import butter, filtfilt
 from config import (
     MODEL_NAME, SAMPLE_RATE, SIMILARITY_THRESHOLD,
-    CUDA_DEVICE_INDEX,
+    CUDA_DEVICE_INDEX, CONFIDENCE_SCALE,
 )
 
 
@@ -88,6 +88,34 @@ def get_gpu_diagnostics() -> dict:
             })
 
     return info
+
+
+def normalize_confidence_scores(raw_scores, scale=CONFIDENCE_SCALE):
+    """Convert raw similarity scores into a normalized confidence distribution."""
+    if not raw_scores:
+        return []
+
+    values = np.asarray([score for _, score in raw_scores], dtype=np.float64)
+    values = np.nan_to_num(values, nan=-1.0, posinf=1.0, neginf=-1.0)
+    scale = scale if scale and scale > 0 else 1.0
+    shifted = (values - np.max(values)) * scale
+    shifted = np.clip(shifted, -60.0, 60.0)
+    exp_values = np.exp(shifted)
+    total = float(np.sum(exp_values))
+
+    if not np.isfinite(total) or total <= 0:
+        confidences = np.full(len(raw_scores), 1.0 / len(raw_scores), dtype=np.float64)
+    else:
+        confidences = exp_values / total
+
+    return [
+        {
+            "user_id": user_id,
+            "raw_similarity": float(score),
+            "normalized_confidence": float(confidence),
+        }
+        for (user_id, score), confidence in zip(raw_scores, confidences)
+    ]
 
 
 class VoiceprintExtractor:
@@ -394,7 +422,13 @@ class VoiceprintDatabase:
         embedding = self.extractor.extract_embedding(audio_path)
         return self.db.add_voiceprint(user_id, embedding, audio_path)
 
-    def batch_register_voiceprint(self, user_id, audio_items):
+    def batch_register_voiceprint(
+        self,
+        user_id,
+        audio_items,
+        min_quality_score=60,
+        consistency_threshold=0.25,
+    ):
         candidates = []
         rejected = []
         for item in audio_items:
@@ -406,7 +440,7 @@ class VoiceprintDatabase:
                 metadata = {}
             try:
                 quality_score = metadata.get("quality_score")
-                if quality_score is not None and quality_score < 60:
+                if min_quality_score is not None and quality_score is not None and quality_score < min_quality_score:
                     rejected.append({
                         "path": path,
                         "reason": "音频质量不足",
@@ -419,6 +453,9 @@ class VoiceprintDatabase:
                 rejected.append({"path": path, "reason": str(e)})
 
         if not candidates:
+            if rejected:
+                first_reason = rejected[0].get("reason", "No valid audio data")
+                raise ValueError(f"No valid audio data: {first_reason}")
             raise ValueError("No valid audio data")
 
         existing_segments = self.db.get_enrollment_segments(user_id)
@@ -427,13 +464,15 @@ class VoiceprintDatabase:
         reference_embeddings.extend(vp["embedding"] for vp in legacy_voiceprints)
 
         accepted = []
-        if reference_embeddings:
+        if consistency_threshold is None:
+            accepted = candidates
+        elif reference_embeddings:
             reference = np.mean(reference_embeddings, axis=0)
             reference = reference / np.linalg.norm(reference)
             for item in candidates:
                 score = self.extractor.compute_similarity(item["embedding"], reference)
                 item["consistency_score"] = score
-                if score < 0.25:
+                if score < consistency_threshold:
                     rejected.append({
                         "path": item["path"],
                         "reason": "与该用户已有声纹差异过大",
@@ -447,7 +486,7 @@ class VoiceprintDatabase:
             for item in candidates:
                 score = self.extractor.compute_similarity(item["embedding"], centroid)
                 item["consistency_score"] = score
-                if score < 0.25:
+                if score < consistency_threshold:
                     rejected.append({
                         "path": item["path"],
                         "reason": "与本次其他片段差异过大",
@@ -488,41 +527,155 @@ class VoiceprintDatabase:
     def verify_speaker(self, audio_path, threshold=SIMILARITY_THRESHOLD):
         all_voiceprints = self.db.get_all_voiceprints()
         if not all_voiceprints:
-            return {"matched": False, "user_id": None, "user_name": None,
-                    "similarity": 0.0, "message": "No voiceprints registered"}
+            self.db.add_verify_log(
+                None,
+                0.0,
+                "no_match",
+                audio_path,
+                threshold=threshold,
+                threshold_type="normalized_confidence",
+                mode="identify",
+                candidate_count=0,
+                candidates=[],
+            )
+            return {
+                "matched": False,
+                "user_id": None,
+                "user_name": None,
+                "department": "",
+                "similarity": 0.0,
+                "normalized_confidence": None,
+                "candidate_count": 0,
+                "all_scores": [],
+                "message": "未识别到已注册人员",
+            }
 
-        ref_embeddings = [(vp['user_id'], vp['embedding']) for vp in all_voiceprints]
-        result = self.extractor.verify_speaker(audio_path, ref_embeddings, threshold)
+        ref_embeddings = [(vp["user_id"], vp["embedding"]) for vp in all_voiceprints]
+        raw_result = self.extractor.verify_speaker(audio_path, ref_embeddings, threshold)
+
+        user_meta = {
+            vp["user_id"]: {
+                "user_id": vp["user_id"],
+                "user_name": vp.get("name") or "未知",
+                "department": vp.get("department") or "",
+            }
+            for vp in all_voiceprints
+        }
 
         user_scores = {}
-        for uid, score in result.get('all_scores', []):
+        for uid, score in raw_result.get("all_scores", []):
             if uid not in user_scores or score > user_scores[uid]:
                 user_scores[uid] = score
 
         sorted_users = sorted(user_scores.items(), key=lambda x: x[1], reverse=True)
         if not sorted_users:
-            return {"matched": False, "user_id": None, "user_name": None,
-                    "similarity": 0.0, "message": "No voiceprints", "all_scores": []}
+            self.db.add_verify_log(
+                None,
+                0.0,
+                "no_match",
+                audio_path,
+                threshold=threshold,
+                threshold_type="normalized_confidence",
+                mode="identify",
+                candidate_count=0,
+                candidates=[],
+            )
+            return {
+                "matched": False,
+                "user_id": None,
+                "user_name": None,
+                "department": "",
+                "similarity": 0.0,
+                "normalized_confidence": None,
+                "candidate_count": 0,
+                "all_scores": [],
+                "message": "未识别到已注册人员",
+            }
 
-        best_uid, best_score = sorted_users[0]
-        is_matched = best_score >= threshold
-        user = self.db.get_user(best_uid)
-        result['user_id'] = best_uid
-        result['user_name'] = user['name'] if user else "Unknown"
-        result['department'] = user.get('department', "") if user else ""
-        result['similarity'] = best_score
-        result['matched'] = is_matched
-        result['all_scores'] = [(uid, score) for uid, score in sorted_users]
-        self.db.add_verify_log(best_uid, best_score, "Match" if is_matched else "No match", audio_path)
+        normalized = normalize_confidence_scores(sorted_users)
+        candidates = []
+        for item in normalized:
+            meta = user_meta.get(item["user_id"], {})
+            candidates.append({
+                **meta,
+                "similarity": item["raw_similarity"],
+                "raw_similarity": item["raw_similarity"],
+                "normalized_confidence": item["normalized_confidence"],
+            })
+
+        best = candidates[0]
+        best_uid = best["user_id"]
+        best_score = best["raw_similarity"]
+        best_confidence = best["normalized_confidence"]
+        is_matched = best_confidence >= threshold
+
+        result = {
+            "matched": is_matched,
+            "user_id": best_uid if is_matched else None,
+            "user_name": best["user_name"] if is_matched else None,
+            "department": best["department"] if is_matched else "",
+            "similarity": best_score,
+            "normalized_confidence": best_confidence,
+            "threshold": threshold,
+            "threshold_type": "normalized_confidence",
+            "candidate_count": len(candidates),
+            "all_scores": candidates,
+            "message": "识别成功" if is_matched else "未识别到已注册人员",
+        }
+        self.db.add_verify_log(
+            best_uid,
+            best_score,
+            "match" if is_matched else "no_match",
+            audio_path,
+            normalized_confidence=best_confidence,
+            threshold=threshold,
+            threshold_type="normalized_confidence",
+            mode="identify",
+            candidate_count=len(candidates),
+            candidates=candidates,
+        )
         return result
 
     def verify_speaker_by_id(self, audio_path, user_id, threshold=SIMILARITY_THRESHOLD):
         user_voiceprints = self.db.get_voiceprints(user_id)
-        if not user_voiceprints:
-            return {"matched": False, "similarity": 0.0, "message": "No voiceprints for this user"}
-        user_embeddings = [vp['embedding'] for vp in user_voiceprints]
-        result = self.extractor.verify_speaker_by_id(audio_path, user_id, user_embeddings, threshold)
         user = self.db.get_user(user_id)
-        self.db.add_verify_log(user_id, result['similarity'],
-                               "Match" if result['matched'] else "No match", audio_path)
+        if not user_voiceprints:
+            self.db.add_verify_log(
+                user_id,
+                0.0,
+                "no_match",
+                audio_path,
+                threshold=threshold,
+                threshold_type="raw_similarity",
+                mode="verify",
+                candidate_count=0,
+                candidates=[],
+            )
+            return {
+                "matched": False,
+                "similarity": 0.0,
+                "user_id": user_id,
+                "user_name": user["name"] if user else "未知",
+                "department": user.get("department", "") if user else "",
+                "message": "该用户尚未注册声纹",
+            }
+        user_embeddings = [vp["embedding"] for vp in user_voiceprints]
+        result = self.extractor.verify_speaker_by_id(audio_path, user_id, user_embeddings, threshold)
+        result.update({
+            "user_id": user_id,
+            "user_name": user["name"] if user else "未知",
+            "department": user.get("department", "") if user else "",
+            "message": "验证通过" if result["matched"] else "验证失败",
+        })
+        self.db.add_verify_log(
+            user_id,
+            result["similarity"],
+            "match" if result["matched"] else "no_match",
+            audio_path,
+            threshold=threshold,
+            threshold_type="raw_similarity",
+            mode="verify",
+            candidate_count=len(user_voiceprints),
+            candidates=None,
+        )
         return result

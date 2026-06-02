@@ -29,6 +29,7 @@ let guideSegments = [];
 document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initFileInputs();
+    updateThresholdLabel();
     checkModelStatus();
     loadUsers();
 });
@@ -362,6 +363,14 @@ function toggleVerifyRecording() {
 function onVerifyModeChange() {
     const mode = document.querySelector('input[name="verify-mode"]:checked').value;
     document.getElementById('verify-user-group').style.display = mode === 'verify' ? 'block' : 'none';
+    updateThresholdLabel();
+}
+
+function updateThresholdLabel() {
+    const modeEl = document.querySelector('input[name="verify-mode"]:checked');
+    const labelEl = document.getElementById('threshold-label-text');
+    if (!modeEl || !labelEl) return;
+    labelEl.textContent = modeEl.value === 'verify' ? '原始相似度阈值' : '归一化置信度阈值';
 }
 
 function startVerification() {
@@ -380,7 +389,7 @@ function startVerification() {
     formData.append('audio', audioFile);
     formData.append('threshold', threshold);
 
-    let url = '/api/voiceprint/identify';
+    let url = '/api/voiceprint/identify-simple';
     if (mode === 'verify') {
         const userId = document.getElementById('verify-user').value;
         if (!userId) { showStatus('verify-status', '请选择要验证的用户', 'error'); return; }
@@ -426,8 +435,6 @@ function showVerifyResult(data) {
         `验证模式: 身份验证`,
         `目标用户: ${data.user_name}`,
         `用户部门: ${data.department || '-'}`,
-        `相似度阈值: ${document.getElementById('threshold-slider').value}`,
-        `实际相似度: ${data.similarity.toFixed(4)}`,
         `验证结果: ${data.matched ? '通过' : '失败'}`
     ].join('\n');
 }
@@ -449,21 +456,12 @@ function showIdentifyResult(data) {
 
     let lines = [
         `验证模式: 身份识别`,
-        `相似度阈值: ${document.getElementById('threshold-slider').value}`,
-        `最高相似度: ${data.similarity.toFixed(4)}`,
     ];
     if (data.matched) {
         lines.push(`匹配用户: ${data.user_name}`);
         lines.push(`用户部门: ${data.department || '-'}`);
     }
-    lines.push(`\n验证结果: ${data.matched ? '成功' : '失败'}`);
-
-    if (data.all_scores && data.all_scores.length > 0) {
-        lines.push('\n--- 所有用户相似度 ---');
-        data.all_scores.forEach(s => {
-            lines.push(`${s.user_name}: ${s.similarity.toFixed(4)}`);
-        });
-    }
+    lines.push(`验证结果: ${data.matched ? '成功' : '失败'}`);
 
     detail.textContent = lines.join('\n');
 }
@@ -478,25 +476,53 @@ function clearResult() {
 }
 
 // ========== 验证日志 ==========
+function formatScore(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(4) : '-';
+}
+
+function normalizeLogResult(log) {
+    const code = String(log.result_code || '').trim().toLowerCase();
+    if (code === 'match') return { code: 'match', label: log.result_label || '匹配' };
+    if (code === 'no_match') return { code: 'no_match', label: log.result_label || '未匹配' };
+
+    const value = String(log.result_label || log.result || '').trim().toLowerCase();
+    if (['match', 'matched', '匹配', '通过', 'success', 'ok'].includes(value)) {
+        return { code: 'match', label: '匹配' };
+    }
+    if (['no match', 'nomatch', 'no_match', 'not match', '未匹配', '失败', 'fail', 'false', 'no'].includes(value)) {
+        return { code: 'no_match', label: '未匹配' };
+    }
+    return { code: 'no_match', label: value ? (log.result_label || log.result) : '未匹配' };
+}
+
 function loadLogs() {
     fetch('/api/logs')
         .then(r => r.json())
         .then(logs => {
             const tbody = document.getElementById('logs-tbody');
             tbody.innerHTML = logs.length === 0
-                ? '<tr><td colspan="5" style="text-align:center;color:#999;">暂无日志</td></tr>'
-                : logs.map(l => `
+                ? '<tr><td colspan="8" style="text-align:center;color:#999;">暂无日志</td></tr>'
+                : logs.map(l => {
+                    const result = normalizeLogResult(l);
+                    const modeLabel = l.mode_label || (l.mode === 'verify' ? '身份验证' : '身份识别');
+                    const thresholdTypeLabel = l.threshold_type_label || (l.mode === 'verify' ? '原始相似度' : '归一化置信度');
+                    return `
                     <tr>
                         <td>${l.id}</td>
+                        <td>${escHtml(modeLabel)}</td>
                         <td>${escHtml(l.user_name)}</td>
-                        <td>${l.similarity ? l.similarity.toFixed(4) : 'N/A'}</td>
-                        <td style="color:${l.result === '匹配' ? '#4caf50' : '#f44336'}">${escHtml(l.result)}</td>
+                        <td>${formatScore(l.similarity)}</td>
+                        <td>${formatScore(l.normalized_confidence)}</td>
+                        <td title="${escHtml(thresholdTypeLabel)}">${formatScore(l.threshold)}</td>
+                        <td style="color:${result.code === 'match' ? '#4caf50' : '#f44336'}">${escHtml(result.label)}</td>
                         <td>${l.created_at || ''}</td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
 
             const total = logs.length;
-            const success = logs.filter(l => l.result === '匹配').length;
+            const success = logs.filter(l => normalizeLogResult(l).code === 'match').length;
             document.getElementById('logs-stats').textContent = `共 ${total} 条记录 | 成功: ${success} | 失败: ${total - success}`;
         })
         .catch(err => console.error('加载日志失败:', err));

@@ -18,6 +18,7 @@ SIMILARITY_THRESHOLD = float(os.environ.get("VOICEPRINT_THRESHOLD", "0.75"))
 SAMPLE_RATE = int(os.environ.get("VOICEPRINT_SAMPLE_RATE", "16000"))
 EMBEDDING_DIM = int(os.environ.get("VOICEPRINT_EMBEDDING_DIM", "192"))
 MODEL_NAME = os.environ.get("VOICEPRINT_MODEL_NAME", "speechbrain/spkrec-ecapa-voxceleb")
+CONFIDENCE_SCALE = float(os.environ.get("VOICEPRINT_CONFIDENCE_SCALE", "8.0"))
 
 # Device: this system requires NVIDIA CUDA. CPU execution is intentionally unsupported.
 CUDA_DEVICE_INDEX = int(os.environ.get("VOICEPRINT_CUDA_DEVICE_INDEX", "0"))
@@ -26,6 +27,8 @@ CUDA_DEVICE_INDEX = int(os.environ.get("VOICEPRINT_CUDA_DEVICE_INDEX", "0"))
 HOST = os.environ.get("VOICEPRINT_HOST", "0.0.0.0")
 PORT = int(os.environ.get("VOICEPRINT_PORT", "5000"))
 DEBUG = os.environ.get("VOICEPRINT_DEBUG", "false").lower() in ("1", "true", "yes")
+ADMIN_USER = os.environ.get("VOICEPRINT_ADMIN_USER", "admin")
+ADMIN_PASS = os.environ.get("VOICEPRINT_ADMIN_PASS", "123456")
 
 # Ensure directories exist
 os.makedirs(AUDIO_DIR, exist_ok=True)

@@ -11,7 +11,8 @@ API 端点：
   DELETE /api/users/<id>        - 删除用户
   POST /api/voiceprint/register - 单条声纹注册
   POST /api/voiceprint/register-batch - 批量注册（多条录音融合为一个向量）
-  POST /api/voiceprint/identify - 身份识别（1:N）
+  POST /api/voiceprint/identify - 身份识别（1:N，详细结果）
+  POST /api/voiceprint/identify-simple - 身份识别（1:N，只返回身份信息）
   POST /api/voiceprint/verify   - 身份验证（1:1）
   GET  /api/logs                - 验证日志
   DELETE /api/logs              - 清空日志
@@ -32,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import (
     SIMILARITY_THRESHOLD, SAMPLE_RATE, AUDIO_DIR, MODEL_DIR, HOST, PORT, DEBUG,
-    MODEL_NAME, CUDA_DEVICE_INDEX,
+    MODEL_NAME, CUDA_DEVICE_INDEX, ADMIN_USER, ADMIN_PASS,
 )
 from database import DatabaseManager
 
@@ -138,9 +139,6 @@ def quality_from_processed_file(path):
 
 
 # ========== 数据重置 API ==========
-
-ADMIN_USER = 'admin'
-ADMIN_PASS = '123456'
 
 
 @app.route('/api/reset', methods=['POST'])
@@ -285,7 +283,7 @@ def register_voiceprint():
                 'clipping_ratio': quality['clipping_ratio'],
                 'snr_db': quality['snr_db'],
             }
-        }])
+        }], min_quality_score=None, consistency_threshold=None)
 
         return jsonify({
             'id': result['vp_id'],
@@ -330,26 +328,46 @@ def identify_speaker():
         audio_file.save(temp_path)
 
         result = vp_database.verify_speaker(temp_path, threshold)
+        return jsonify(result)
 
-        # 聚合 all_scores：同一用户只保留最高分
-        raw_scores = result.get('all_scores', [])
-        user_best = {}
-        for uid, score in raw_scores:
-            if uid not in user_best or score > user_best[uid]:
-                user_best[uid] = score
-        aggregated = sorted(user_best.items(), key=lambda x: x[1], reverse=True)[:10]
+    except Exception as e:
+        return jsonify({'error': f'身份识别失败: {str(e)}'}), 500
 
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+
+
+@app.route('/api/voiceprint/identify-simple', methods=['POST'])
+def identify_speaker_simple():
+    if not model_loaded:
+        return model_not_ready_response()
+
+    if 'audio' not in request.files:
+        return jsonify({'error': '请上传音频文件'}), 400
+
+    audio_file = request.files['audio']
+    if not audio_file.filename:
+        return jsonify({'error': '请上传音频文件'}), 400
+
+    threshold = request.form.get('threshold', SIMILARITY_THRESHOLD, type=float)
+
+    temp_path = None
+    try:
+        ext = os.path.splitext(audio_file.filename)[1].lower() or '.wav'
+        temp_path = os.path.join(tempfile.gettempdir(), f"vp_id_simple_{uuid.uuid4().hex}{ext}")
+        audio_file.save(temp_path)
+
+        result = vp_database.verify_speaker(temp_path, threshold)
         return jsonify({
             'matched': result['matched'],
             'user_id': result.get('user_id'),
             'user_name': result.get('user_name'),
             'department': result.get('department', ''),
-            'similarity': result.get('similarity', 0),
             'message': result.get('message', ''),
-            'all_scores': [
-                {'user_id': uid, 'user_name': db_manager.get_user(uid)['name'] if db_manager.get_user(uid) else '未知', 'similarity': score}
-                for uid, score in aggregated
-            ]
         })
 
     except Exception as e:
@@ -398,9 +416,9 @@ def verify_speaker():
         return jsonify({
             'matched': result['matched'],
             'similarity': result['similarity'],
-            'user_id': user_id,
-            'user_name': user['name'],
-            'department': user.get('department', ''),
+            'user_id': result.get('user_id', user_id),
+            'user_name': result.get('user_name', user['name']),
+            'department': result.get('department', user.get('department', '')),
             'message': result.get('message', '')
         })
 
@@ -424,10 +442,20 @@ def get_logs():
     result = [{
         'id': log['id'],
         'user_id': log['user_id'],
-        'user_name': log.get('name', '未知'),
+        'user_name': log.get('name') or '未知',
+        'mode': log.get('mode_code', log.get('mode', 'identify')),
+        'mode_label': log.get('mode_label', '身份识别'),
         'similarity': log['similarity'],
+        'normalized_confidence': log.get('normalized_confidence'),
+        'threshold': log.get('threshold'),
+        'threshold_type': log.get('threshold_type'),
+        'threshold_type_label': log.get('threshold_type_label'),
+        'candidate_count': log.get('candidate_count', 0),
         'result': log['result'],
+        'result_code': log.get('result_code', 'no_match'),
+        'result_label': log.get('result_label', log['result']),
         'audio_path': log['audio_path'],
+        'candidates': log.get('candidates', []),
         'created_at': log['created_at']
     } for log in logs]
     return jsonify(result)

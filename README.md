@@ -120,8 +120,11 @@ export VOICEPRINT_CUDA_DEVICE_INDEX=0
 | `VOICEPRINT_CUDA_DEVICE_INDEX` | `0` | CUDA GPU 设备编号 |
 | `VOICEPRINT_DATA_DIR` | `data` | 数据目录 |
 | `VOICEPRINT_DB_PATH` | `data/voiceprints.db` | SQLite 数据库路径 |
-| `VOICEPRINT_THRESHOLD` | `0.75` | 声纹相似度阈值 |
+| `VOICEPRINT_THRESHOLD` | `0.75` | 默认验证阈值；1:N 身份识别使用归一化置信度，1:1 身份验证使用原始相似度 |
 | `VOICEPRINT_SAMPLE_RATE` | `16000` | 音频采样率 |
+| `VOICEPRINT_CONFIDENCE_SCALE` | `8.0` | 识别归一化置信度的 softmax 缩放系数 |
+| `VOICEPRINT_ADMIN_USER` | `admin` | 系统重置管理员账号 |
+| `VOICEPRINT_ADMIN_PASS` | `123456` | 系统重置管理员密码 |
 | `VOICEPRINT_HOST` | `0.0.0.0` | 服务监听地址 |
 | `VOICEPRINT_PORT` | `5000` | 服务端口 |
 | `VOICEPRINT_DEBUG` | `false` | Flask 调试模式 |

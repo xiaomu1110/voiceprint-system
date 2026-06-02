@@ -247,7 +247,7 @@
                             <audio id="verify-audio-playback" controls style="display:none; width:100%; margin-top:8px;"></audio>
                         </div>
                         <div class="form-group">
-                            <label>相似度阈值: <span id="threshold-value">0.75</span></label>
+                            <label><span id="threshold-label-text">归一化置信度阈值</span>: <span id="threshold-value">0.75</span></label>
                             <input type="range" id="threshold-slider" min="0.5" max="0.95" step="0.01" value="0.75" oninput="document.getElementById('threshold-value').textContent=this.value">
                         </div>
                         <button class="btn btn-primary" onclick="startVerification()">开始验证</button>
@@ -280,8 +280,11 @@
                             <thead>
                                 <tr>
                                     <th>ID</th>
+                                    <th>模式</th>
                                     <th>用户</th>
-                                    <th>相似度</th>
+                                    <th>原始相似度</th>
+                                    <th>归一化置信度</th>
+                                    <th>阈值</th>
                                     <th>结果</th>
                                     <th>时间</th>
                                 </tr>
