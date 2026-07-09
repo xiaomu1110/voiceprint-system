@@ -1,0 +1,16 @@
+# Extra runtime dependencies for the upgraded voiceprint pipeline
+# (ERes2NetV2 Chinese encoder + Silero VAD). These are installed via `uv pip`
+# rather than pyproject.toml on purpose: modelscope depends on torch, and adding
+# it to pyproject would make uv re-resolve torch from the default PyPI index
+# (a CPU wheel), breaking the GPU-only build.
+#
+# Install AFTER scripts/bootstrap.py has installed the CUDA torch build:
+#   uv pip install -r requirements-extras.txt
+silero-vad
+modelscope
+addict
+simplejson
+oss2
+datasets
+Pillow
+sortedcontainers

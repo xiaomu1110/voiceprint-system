@@ -22,19 +22,8 @@ def _load_silero():
         return _silero_model
     _silero_attempted = True
     try:
-        try:
-            from silero_vad import get_speech_ts  # type: ignore
-            return None  # package API differs; fall through to torch.hub path
-        except Exception:
-            pass
-        import torch
-        model, _ = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad",
-            model="silero_vad",
-            trust_repo=True,
-            force_reload=False,
-        )
-        _silero_model = model
+        from silero_vad import load_silero_vad  # type: ignore
+        _silero_model = load_silero_vad()
         return _silero_model
     except Exception as e:
         print(f"[vad] Silero VAD unavailable, using energy fallback: {e}")
@@ -62,18 +51,20 @@ def speech_timestamps(audio: np.ndarray, sr: int, use_silero: bool = True):
             try:
                 import torch
                 from scipy.signal import resample as scipy_resample
+                from silero_vad import get_speech_timestamps as _gst  # type: ignore
                 wav = audio.astype(np.float32)
+                orig_len = len(wav)
                 if sr != 16000:
                     wav = scipy_resample(wav, int(len(wav) * 16000 / sr))
-                    sr = 16000
-                tensor = torch.from_numpy(wav).unsqueeze(0)
-                ts = model.get_speech_timestamps(tensor, sampling_rate=sr)
-                # remap sample indices if we resampled
-                scale = len(audio) / max(len(wav), 1)
-                return [
-                    {"start": int(t["start"] * scale), "end": int(t["end"] * scale)}
-                    for t in ts
-                ]
+                tensor = torch.from_numpy(wav)
+                ts = _gst(tensor, model, sampling_rate=16000)
+                scale = orig_len / max(len(wav), 1)
+                if scale != 1.0:
+                    ts = [
+                        {"start": int(t["start"] * scale), "end": int(t["end"] * scale)}
+                        for t in ts
+                    ]
+                return ts
             except Exception as e:
                 print(f"[vad] Silero failed at runtime, falling back: {e}")
     # energy fallback

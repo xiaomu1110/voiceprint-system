@@ -14,6 +14,8 @@ from __future__ import annotations
 import numpy as np
 import torch
 
+from config import ERES2NETV2_MODEL_ID
+
 
 def _normalize(embedding: np.ndarray) -> np.ndarray:
     norm = float(np.linalg.norm(embedding))
@@ -52,7 +54,7 @@ class ECAPAEncoder(SpeakerEncoder):
 
     def __init__(self, device: str | None = None):
         from voiceprint import VoiceprintExtractor  # local import; loads the GPU model
-        self._vpe = VoiceprintExtractor()
+        self._vpe = VoiceprintExtractor(force_encoder="ecapa")
         self._device = self._vpe.device
         if device and device != self._device:
             print(f"[ecapa] requested device {device} but VoiceprintExtractor uses {self._device}")
@@ -135,9 +137,9 @@ class ERes2NetV2Encoder(_LazyHEncoder):
 
     name = "erres2netv2"
     dim = 192
-    _install_hint = "pip install modelscope speakerlab"
+    _install_hint = "pip install modelscope sortedcontainers addict datasets Pillow"
 
-    def __init__(self, device: str | None = None, model_id: str = "iic/sv_erres2netv2_w24s4ep4"):
+    def __init__(self, device: str | None = None, model_id: str = ERES2NETV2_MODEL_ID):
         self.model_id = model_id
         super().__init__(device=device)
 
@@ -145,15 +147,21 @@ class ERes2NetV2Encoder(_LazyHEncoder):
         from modelscope.pipelines import pipeline  # type: ignore
         return pipeline("speaker-verification", model=self.model_id)
 
+    def embed(self, wav_path: str) -> np.ndarray:
+        # The ModelScope SV pipeline is path-based and does its own preprocessing.
+        if self._model is None:
+            self._fail()
+        with torch.no_grad():
+            res = self._model([wav_path], output_emb=True)
+        emb = np.asarray(res["embs"], dtype=np.float32)[0]
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return _normalize(emb)
+
     def _embed_from_model(self, waveform: torch.Tensor, sr: int) -> np.ndarray:
-        # 3D-Speaker/ModelScope SV pipelines expose embedding extraction via the
-        # underlying model's forward; the call shape varies by version. Wire the
-        # concrete forward here once the dependency is installed and verified.
-        wav_np = waveform.squeeze(0).cpu().numpy()
-        emb = self._model(wav_np, sampling_rate=sr)
-        if isinstance(emb, dict):
-            emb = emb.get("embedding", emb.get("embs", next(iter(emb.values()))))
-        return np.asarray(emb, dtype=np.float32).reshape(-1)
+        raise NotImplementedError(
+            "ERes2NetV2 is path-based; use embed(wav_path) instead of embed_waveform()"
+        )
 
 
 class WavLMSpkEncoder(_LazyHEncoder):

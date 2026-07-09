@@ -21,6 +21,7 @@ from config import (
     VERIFY_THRESHOLD, IDENTIFY_ABS_FLOOR, IDENTIFY_MARGIN,
     CONSISTENCY_THRESHOLD, FUSION_TRIM_RATIO,
     USE_ASNORM, AS_NORM_K, USE_SILERO_VAD,
+    ENCODER_NAME, ERES2NETV2_MODEL_ID,
 )
 from scoring import CohortManager
 import vad
@@ -130,12 +131,19 @@ class VoiceprintExtractor:
     SUPPORTED_FORMATS = {'.wav', '.flac', '.ogg', '.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
     NEED_CONVERT = {'.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
 
-    def __init__(self, model_name=MODEL_NAME):
+    def __init__(self, model_name=MODEL_NAME, force_encoder=None):
         self.model_name = model_name
         self.model = None
+        self._sv_pipeline = None
+        self.encoder_name = "ecapa"
         self.ffmpeg_path = self._find_ffmpeg()
         self.device, self.device_name = self._select_device()
-        self._load_model()
+        want = force_encoder or ENCODER_NAME
+        if want == "erres2netv2" and self._load_eres2netv2():
+            self.encoder_name = "erres2netv2"
+            self.model_name = "ERes2NetV2"
+        else:
+            self._load_model()
 
     def _select_device(self):
         """Select and validate the required CUDA device."""
@@ -195,6 +203,19 @@ class VoiceprintExtractor:
             run_opts={"device": self.device},
         )
         print(f"Model loaded on GPU: {self.device} ({self.device_name})")
+
+    def _load_eres2netv2(self):
+        """Load the ModelScope ERes2NetV2 speaker-verification pipeline (Chinese-strong).
+        Returns True on success; False to fall back to ECAPA."""
+        try:
+            from modelscope.pipelines import pipeline  # type: ignore
+            self._sv_pipeline = pipeline("speaker-verification", model=ERES2NETV2_MODEL_ID)
+            print(f"Model loaded: ERes2NetV2 ({ERES2NETV2_MODEL_ID}) on {self.device} ({self.device_name})")
+            return True
+        except Exception as e:
+            print(f"ERes2NetV2 load failed, falling back to ECAPA: {e}")
+            self._sv_pipeline = None
+            return False
 
     def _convert_audio_ffmpeg(self, audio_path):
         if not self.ffmpeg_path:
@@ -365,6 +386,13 @@ class VoiceprintExtractor:
 
     def extract_embedding(self, audio_path):
         try:
+            if self._sv_pipeline is not None:
+                with torch.no_grad():
+                    res = self._sv_pipeline([audio_path], output_emb=True)
+                emb = np.asarray(res["embs"], dtype=np.float32)[0]
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                return self._normalize(emb)
             waveform, _ = self.load_audio(audio_path)
             waveform = waveform.to(self.device)
             with torch.no_grad():

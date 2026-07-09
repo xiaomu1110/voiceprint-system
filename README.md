@@ -130,7 +130,9 @@ export VOICEPRINT_CUDA_DEVICE_INDEX=0
 | `VOICEPRINT_CONFIDENCE_SCALE` | `8.0` | 识别归一化置信度的 softmax 缩放系数 |
 | `VOICEPRINT_USE_ASNORM` | `false` | 启用自适应分数归一化（AS-norm，需先在目标域标定阈值） |
 | `VOICEPRINT_ASNORM_K` | `200` | AS-norm 的 cohort top-K 数量 |
-| `VOICEPRINT_USE_SILERO_VAD` | `false` | 启用 Silero VAD 估算有效语音时长（失败回退能量法） |
+| `VOICEPRINT_USE_SILERO_VAD` | `true` | Silero VAD 估算有效语音时长（失败回退能量法） |
+| `VOICEPRINT_ENCODER` | `erres2netv2` | 说话人编码后端：`erres2netv2`（中文强，默认）或 `ecapa`（回退） |
+| `VOICEPRINT_ERES2NETV2_MODEL` | `iic/speech_eres2netv2_sv_zh-cn_16k-common` | ERes2NetV2 的 ModelScope 模型 id |
 | `VOICEPRINT_ADMIN_USER` | `admin` | 系统重置管理员账号 |
 | `VOICEPRINT_ADMIN_PASS` | `123456` | 系统重置管理员密码 |
 | `VOICEPRINT_HOST` | `0.0.0.0` | 服务监听地址 |

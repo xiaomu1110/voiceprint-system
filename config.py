@@ -31,7 +31,12 @@ FUSION_TRIM_RATIO = float(os.environ.get("VOICEPRINT_FUSION_TRIM_RATIO", "0.1"))
 USE_ASNORM = os.environ.get("VOICEPRINT_USE_ASNORM", "false").lower() in ("1", "true", "yes")
 AS_NORM_K = int(os.environ.get("VOICEPRINT_ASNORM_K", "200"))
 # Use Silero VAD for effective-speech-duration estimation in quality gating (falls back to energy).
-USE_SILERO_VAD = os.environ.get("VOICEPRINT_USE_SILERO_VAD", "false").lower() in ("1", "true", "yes")
+USE_SILERO_VAD = os.environ.get("VOICEPRINT_USE_SILERO_VAD", "true").lower() in ("1", "true", "yes")
+# Default speaker encoder backend: 'erres2netv2' (Chinese-strong, default) or 'ecapa' (fallback).
+ENCODER_NAME = os.environ.get("VOICEPRINT_ENCODER", "erres2netv2")
+ERES2NETV2_MODEL_ID = os.environ.get(
+    "VOICEPRINT_ERES2NETV2_MODEL", "iic/speech_eres2netv2_sv_zh-cn_16k-common"
+)
 SAMPLE_RATE = int(os.environ.get("VOICEPRINT_SAMPLE_RATE", "16000"))
 EMBEDDING_DIM = int(os.environ.get("VOICEPRINT_EMBEDDING_DIM", "192"))
 MODEL_NAME = os.environ.get("VOICEPRINT_MODEL_NAME", "speechbrain/spkrec-ecapa-voxceleb")
