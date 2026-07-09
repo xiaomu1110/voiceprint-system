@@ -283,7 +283,7 @@ def register_voiceprint():
                 'clipping_ratio': quality['clipping_ratio'],
                 'snr_db': quality['snr_db'],
             }
-        }], min_quality_score=None, consistency_threshold=None)
+        }])
 
         return jsonify({
             'id': result['vp_id'],

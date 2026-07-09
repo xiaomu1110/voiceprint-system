@@ -23,6 +23,8 @@ class DatabaseManager:
         """获取数据库连接"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
     
     def init_db(self):
@@ -185,7 +187,7 @@ class DatabaseManager:
             if row['audio_path'] and os.path.exists(row['audio_path']):
                 try:
                     os.remove(row['audio_path'])
-                except:
+                except Exception:
                     pass
         
         # 删除声纹记录
@@ -225,7 +227,7 @@ class DatabaseManager:
             if row['audio_path'] and os.path.exists(row['audio_path']):
                 try:
                     os.remove(row['audio_path'])
-                except:
+                except Exception:
                     pass
 
         # 删除旧声纹记录
@@ -329,7 +331,7 @@ class DatabaseManager:
         if row and row['audio_path'] and os.path.exists(row['audio_path']):
             try:
                 os.remove(row['audio_path'])
-            except:
+            except Exception:
                 pass
         
         cursor.execute("DELETE FROM voiceprints WHERE id = ?", (vp_id,))
