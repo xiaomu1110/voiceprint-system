@@ -9,19 +9,134 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* ========== 无障碍辅助类 ========== */
+        .sr-only {
+            position: absolute; width: 1px; height: 1px;
+            padding: 0; margin: -1px; overflow: hidden;
+            clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+        }
+
+        /* ========== 侧边栏 SVG 图标 ========== */
+        .tab-btn .nav-icon {
+            width: 18px; height: 18px; flex-shrink: 0;
+            stroke: currentColor; fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .tab-btn::before { display: none; }
+
+        /* ========== 按钮 SVG 图标 ========== */
+        .btn .btn-icon {
+            width: 16px; height: 16px; flex-shrink: 0;
+            stroke: currentColor; fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .btn-reset .btn-icon { width: 14px; height: 14px; }
+        .btn-sm .btn-icon { width: 13px; height: 13px; }
+
+        /* 删除按钮 JS 生成的垃圾桶图标（CSS mask 方案） */
+        .btn-sm-danger::before {
+            content: "";
+            display: inline-block; width: 13px; height: 13px;
+            margin-right: 3px; vertical-align: -2px;
+            background: currentColor;
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 6 5 6 21 6'/%3E%3Cpath d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 6 5 6 21 6'/%3E%3Cpath d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/%3E%3C/svg%3E");
+            -webkit-mask-size: contain; mask-size: contain;
+            -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+            -webkit-mask-position: center; mask-position: center;
+        }
+
+        /* ========== 加载波形动画 ========== */
+        .loading-waveform {
+            display: flex; justify-content: center; margin-top: 22px;
+        }
+        .waveform-svg {
+            width: 200px; height: 50px; overflow: visible;
+        }
+        .waveform-svg .wave-bar {
+            fill: var(--amber);
+            animation: wave 1.2s ease-in-out infinite;
+            transform-origin: center;
+        }
+        @keyframes wave {
+            0%, 100% { transform: scaleY(0.2); }
+            50% { transform: scaleY(1); }
+        }
+
+        /* ========== 录音波形动画 ========== */
+        .recording-waveform {
+            display: none; align-items: center; gap: 2px; height: 28px;
+        }
+        .record-controls:has(.btn-record.recording) .recording-waveform {
+            display: flex;
+        }
+        .waveform-svg-sm {
+            width: 84px; height: 28px; overflow: visible;
+        }
+        .waveform-svg-sm .wave-bar-sm {
+            fill: var(--hazard);
+            animation: rec-wave 0.7s ease-in-out infinite;
+            transform-origin: center;
+        }
+        @keyframes rec-wave {
+            0%, 100% { transform: scaleY(0.25); }
+            50% { transform: scaleY(1); }
+        }
+
+        /* ========== 结果图标增强 ========== */
+        .result-icon {
+            width: 80px; height: 80px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 8px;
+            font-size: 40px; font-weight: 700; line-height: 1;
+            transition: all 0.3s ease;
+        }
+        .result-icon.success {
+            background: var(--teal-soft);
+            border: 2px solid rgba(45, 212, 191, 0.4);
+        }
+        .result-icon.fail {
+            background: var(--hazard-soft);
+            border: 2px solid rgba(240, 83, 74, 0.4);
+        }
+
+        /* ========== 减弱动效偏好 ========== */
+        @media (prefers-reduced-motion: reduce) {
+            .waveform-svg .wave-bar,
+            .waveform-svg-sm .wave-bar-sm { animation: none; }
+        }
+    </style>
 </head>
 <body>
     <div id="app">
         <!-- 加载遮罩 -->
-        <div id="loading-overlay" class="loading-overlay">
+        <div id="loading-overlay" class="loading-overlay" role="alert" aria-live="assertive">
             <div class="loading-content">
                 <div class="brand-logo brand-logo-lg">
                     <img src="/static/img/zhengchao-logo.png" alt="正超" class="brand-logo-img">
                 </div>
                 <h2>配电柜智能语音识别系统</h2>
                 <p id="loading-text">正在加载声纹识别模型，请稍候...</p>
-                <div class="eq-strip" aria-hidden="true">
-                    <span></span><span></span><span></span><span></span><span></span>
+                <div class="loading-waveform" aria-hidden="true">
+                    <svg viewBox="0 0 200 50" class="waveform-svg">
+                        <rect class="wave-bar" x="4"  y="10" width="5" height="30" rx="2.5" style="animation-delay:0s"/>
+                        <rect class="wave-bar" x="16" y="5"  width="5" height="40" rx="2.5" style="animation-delay:-0.1s"/>
+                        <rect class="wave-bar" x="28" y="12" width="5" height="26" rx="2.5" style="animation-delay:-0.2s"/>
+                        <rect class="wave-bar" x="40" y="3"  width="5" height="44" rx="2.5" style="animation-delay:-0.3s"/>
+                        <rect class="wave-bar" x="52" y="8"  width="5" height="34" rx="2.5" style="animation-delay:-0.4s"/>
+                        <rect class="wave-bar" x="64" y="15" width="5" height="20" rx="2.5" style="animation-delay:-0.5s"/>
+                        <rect class="wave-bar" x="76" y="6"  width="5" height="38" rx="2.5" style="animation-delay:-0.6s"/>
+                        <rect class="wave-bar" x="88" y="2"  width="5" height="46" rx="2.5" style="animation-delay:-0.7s"/>
+                        <rect class="wave-bar" x="100" y="10" width="5" height="30" rx="2.5" style="animation-delay:-0.8s"/>
+                        <rect class="wave-bar" x="112" y="14" width="5" height="22" rx="2.5" style="animation-delay:-0.9s"/>
+                        <rect class="wave-bar" x="124" y="7"  width="5" height="36" rx="2.5" style="animation-delay:-1.0s"/>
+                        <rect class="wave-bar" x="136" y="4"  width="5" height="42" rx="2.5" style="animation-delay:-1.1s"/>
+                        <rect class="wave-bar" x="148" y="11" width="5" height="28" rx="2.5" style="animation-delay:-0.15s"/>
+                        <rect class="wave-bar" x="160" y="6"  width="5" height="38" rx="2.5" style="animation-delay:-0.35s"/>
+                        <rect class="wave-bar" x="172" y="9"  width="5" height="32" rx="2.5" style="animation-delay:-0.55s"/>
+                        <rect class="wave-bar" x="184" y="5"  width="5" height="40" rx="2.5" style="animation-delay:-0.75s"/>
+                    </svg>
                 </div>
             </div>
         </div>
@@ -35,16 +150,19 @@
                 <span class="brand-sub">配电柜智能语音识别系统</span>
             </div>
             <div class="header-right">
-                <span id="status-indicator" class="status-dot status-loading"></span>
+                <span id="status-indicator" class="status-dot status-loading" aria-hidden="true"></span>
                 <span id="status-text">模型加载中...</span>
-                <button class="btn btn-reset" onclick="showResetDialog()">重置系统</button>
+                <button class="btn btn-reset" onclick="showResetDialog()" aria-label="重置系统">
+                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    重置系统
+                </button>
             </div>
         </header>
 
         <!-- 重置登录弹窗 -->
-        <div id="reset-modal" class="modal-overlay" style="display:none;">
+        <div id="reset-modal" class="modal-overlay" style="display:none;" role="dialog" aria-labelledby="reset-modal-title" aria-modal="true">
             <div class="modal-box">
-                <h3>管理员验证</h3>
+                <h3 id="reset-modal-title">管理员验证</h3>
                 <div class="form-group">
                     <label for="reset-user">账号</label>
                     <input type="text" id="reset-user" placeholder="请输入管理员账号">
@@ -53,40 +171,61 @@
                     <label for="reset-pass">密码</label>
                     <input type="password" id="reset-pass" placeholder="请输入密码">
                 </div>
-                <div id="reset-error" class="status-msg error" style="display:none;"></div>
+                <div id="reset-error" class="status-msg error" style="display:none;" role="alert"></div>
                 <div class="modal-actions">
                     <button class="btn btn-secondary" onclick="closeResetDialog()">取消</button>
-                    <button class="btn btn-danger" onclick="confirmReset()">确认重置</button>
+                    <button class="btn btn-danger" onclick="confirmReset()" aria-label="确认重置系统">
+                        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        确认重置
+                    </button>
                 </div>
             </div>
         </div>
 
         <div class="app-shell">
             <aside class="sidebar">
-                <nav class="tab-nav">
-                    <button class="tab-btn active" data-tab="intro">项目介绍</button>
-                    <button class="tab-btn" data-tab="status">系统状态</button>
-                    <button class="tab-btn" data-tab="users">用户管理</button>
-                    <button class="tab-btn" data-tab="register">声纹注册</button>
-                    <button class="tab-btn" data-tab="verify">身份验证</button>
-                    <button class="tab-btn" data-tab="logs">验证日志</button>
+                <nav class="tab-nav" aria-label="功能导航">
+                    <button class="tab-btn active" data-tab="intro" aria-label="项目介绍">
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        项目介绍
+                    </button>
+                    <button class="tab-btn" data-tab="status" aria-label="系统状态">
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        系统状态
+                    </button>
+                    <button class="tab-btn" data-tab="users" aria-label="用户管理">
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        用户管理
+                    </button>
+                    <button class="tab-btn" data-tab="register" aria-label="声纹注册">
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                        声纹注册
+                    </button>
+                    <button class="tab-btn" data-tab="verify" aria-label="身份验证">
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                        身份验证
+                    </button>
+                    <button class="tab-btn" data-tab="logs" aria-label="验证日志">
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        验证日志
+                    </button>
                 </nav>
             </aside>
 
             <main class="tab-content">
             <!-- 项目介绍 -->
-            <section id="tab-intro" class="tab-panel active">
+            <section id="tab-intro" class="tab-panel active" aria-label="项目介绍">
                 <div class="card intro-wrap">
                     <h3>项目介绍</h3>
                     <p class="intro-lead">
-                        <strong>配电柜智能语音识别系统</strong>面向配电柜操作场景，以“声音即身份”为核心理念，通过声纹生物特征对作业人员进行身份认证，替代传统密码与刷卡，确保操作合规、责任到人、全程可追溯。系统依托 NVIDIA GPU 加速，保障现场认证的实时响应。
+                        <strong>配电柜智能语音识别系统</strong>面向配电柜操作场景，以"声音即身份"为核心理念，通过声纹生物特征对作业人员进行身份认证，替代传统密码与刷卡，确保操作合规、责任到人、全程可追溯。系统依托 NVIDIA GPU 加速，保障现场认证的实时响应。
                     </p>
                     <div class="intro-capability">
                         <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">人员管理</div><div class="cap-desc">录入与维护班组操作人员信息</div></div></div>
                         <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">声纹建档</div><div class="cap-desc">分段引导采集，多段融合建立稳定档案</div></div></div>
                         <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">质量管控</div><div class="cap-desc">自动评估录音质量，过滤不合格片段</div></div></div>
-                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">身份识别</div><div class="cap-desc">一句话识别“是谁”（1:N）</div></div></div>
-                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">身份验证</div><div class="cap-desc">确认“是否为指定人员”（1:1）</div></div></div>
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">身份识别</div><div class="cap-desc">一句话识别"是谁"（1:N）</div></div></div>
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">身份验证</div><div class="cap-desc">确认"是否为指定人员"（1:1）</div></div></div>
                         <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">全程留痕</div><div class="cap-desc">验证记录可查询、可追溯</div></div></div>
                     </div>
 
@@ -94,11 +233,11 @@
                         <h4>声纹建档流程</h4>
                         <div class="flow-row">
                             <div class="flow-node"><div class="flow-num">01</div><div class="flow-title">选择人员</div><div class="flow-sub">录入班组操作人员</div></div>
-                            <div class="flow-arrow">→</div>
+                            <div class="flow-arrow" aria-hidden="true">→</div>
                             <div class="flow-node"><div class="flow-num">02</div><div class="flow-title">语音采集</div><div class="flow-sub">朗读引导文本 · 上传 · 录音</div></div>
-                            <div class="flow-arrow">→</div>
+                            <div class="flow-arrow" aria-hidden="true">→</div>
                             <div class="flow-node"><div class="flow-num">03</div><div class="flow-title">质量评估</div><div class="flow-sub">过滤噪声 / 静音 / 削波片段</div></div>
-                            <div class="flow-arrow">→</div>
+                            <div class="flow-arrow" aria-hidden="true">→</div>
                             <div class="flow-node"><div class="flow-num">04</div><div class="flow-title">声纹融合入库</div><div class="flow-sub">多段融合形成稳定声纹档案</div></div>
                         </div>
                     </div>
@@ -107,11 +246,11 @@
                         <h4>身份认证流程</h4>
                         <div class="flow-row phase-verify">
                             <div class="flow-node"><div class="flow-num">05</div><div class="flow-title">现场语音</div><div class="flow-sub">操作前语音输入</div></div>
-                            <div class="flow-arrow">→</div>
+                            <div class="flow-arrow" aria-hidden="true">→</div>
                             <div class="flow-node"><div class="flow-num">06</div><div class="flow-title">声纹比对</div><div class="flow-sub">与在库声纹档案匹配</div></div>
-                            <div class="flow-arrow">→</div>
+                            <div class="flow-arrow" aria-hidden="true">→</div>
                             <div class="flow-node"><div class="flow-num">07</div><div class="flow-title">识别 / 验证</div><div class="flow-sub">1:N 识别 · 1:1 验证</div></div>
-                            <div class="flow-arrow">→</div>
+                            <div class="flow-arrow" aria-hidden="true">→</div>
                             <div class="flow-node"><div class="flow-num">08</div><div class="flow-title">记录留痕</div><div class="flow-sub">验证结果可查询追溯</div></div>
                         </div>
                     </div>
@@ -120,48 +259,51 @@
             </section>
 
             <!-- 系统状态 -->
-            <section id="tab-status" class="tab-panel">
+            <section id="tab-status" class="tab-panel" aria-label="系统状态">
                 <div class="card system-card">
                     <div class="card-header">
                         <h3>系统运行状态</h3>
-                        <button class="btn btn-secondary" onclick="checkModelStatus()">刷新状态</button>
+                        <button class="btn btn-secondary" onclick="checkModelStatus()" aria-label="刷新系统状态">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            刷新状态
+                        </button>
                     </div>
-                    <div class="status-grid">
-                        <div class="status-item">
+                    <div class="status-grid" role="list">
+                        <div class="status-item" role="listitem">
                             <span class="status-label">运行模式</span>
                             <strong id="runtime-mode">检测中</strong>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" role="listitem">
                             <span class="status-label">GPU 设备</span>
                             <strong id="gpu-device">检测中</strong>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" role="listitem">
                             <span class="status-label">CUDA 状态</span>
                             <strong id="cuda-state">检测中</strong>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" role="listitem">
                             <span class="status-label">PyTorch</span>
                             <strong id="torch-state">检测中</strong>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" role="listitem">
                             <span class="status-label">模型</span>
                             <strong id="model-state">加载中</strong>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" role="listitem">
                             <span class="status-label">数据</span>
                             <strong id="data-state">统计中</strong>
                         </div>
                     </div>
-                    <div id="gpu-detail" class="status-detail"></div>
+                    <div id="gpu-detail" class="status-detail" aria-label="GPU 详细信息"></div>
                 </div>
             </section>
 
             <!-- 用户管理 -->
-            <section id="tab-users" class="tab-panel">
+            <section id="tab-users" class="tab-panel" aria-label="用户管理">
                 <div class="panel-grid">
                     <div class="card">
                         <h3>添加用户</h3>
-                        <form id="add-user-form">
+                        <form id="add-user-form" aria-label="添加用户表单">
                             <div class="form-group">
                                 <label for="user-name">用户名 *</label>
                                 <input type="text" id="user-name" placeholder="请输入用户名" required>
@@ -170,33 +312,39 @@
                                 <label for="user-dept">部门</label>
                                 <input type="text" id="user-dept" placeholder="请输入部门">
                             </div>
-                            <button type="submit" class="btn btn-primary">添加用户</button>
+                            <button type="submit" class="btn btn-primary">
+                                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                                添加用户
+                            </button>
                         </form>
                     </div>
                     <div class="card">
                         <h3>用户列表</h3>
                         <div class="table-wrapper">
-                            <table id="users-table">
+                            <table id="users-table" aria-label="用户列表">
                                 <thead>
                                     <tr>
-                                        <th>ID</th>
-                                        <th>用户名</th>
-                                        <th>部门</th>
-                                        <th>声纹数</th>
-                                        <th>创建时间</th>
-                                        <th>操作</th>
+                                        <th scope="col">ID</th>
+                                        <th scope="col">用户名</th>
+                                        <th scope="col">部门</th>
+                                        <th scope="col">声纹数</th>
+                                        <th scope="col">创建时间</th>
+                                        <th scope="col">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="users-tbody"></tbody>
                             </table>
                         </div>
-                        <button class="btn btn-secondary" onclick="loadUsers()">刷新</button>
+                        <button class="btn btn-secondary" onclick="loadUsers()" aria-label="刷新用户列表">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            刷新
+                        </button>
                     </div>
                 </div>
             </section>
 
             <!-- 声纹注册 -->
-            <section id="tab-register" class="tab-panel">
+            <section id="tab-register" class="tab-panel" aria-label="声纹注册">
                 <div class="panel-grid">
                     <div class="card">
                         <h3>声纹注册</h3>
@@ -208,7 +356,10 @@
                             <label>上传音频文件</label>
                             <div class="file-upload">
                                 <input type="file" id="reg-file" accept="audio/*" hidden>
-                                <button class="btn btn-secondary" onclick="document.getElementById('reg-file').click()">选择文件</button>
+                                <button class="btn btn-secondary" onclick="document.getElementById('reg-file').click()" aria-label="选择音频文件">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    选择文件
+                                </button>
                                 <span id="reg-file-name">未选择文件</span>
                             </div>
                         </div>
@@ -220,10 +371,29 @@
                                     <span class="record-icon"></span> 开始录音
                                 </button>
                                 <span id="reg-record-time" class="record-time">00:00</span>
+                                <div class="recording-waveform" aria-hidden="true">
+                                    <svg viewBox="0 0 84 28" class="waveform-svg-sm">
+                                        <rect class="wave-bar-sm" x="2"  y="7"  width="3" height="14" rx="1.5" style="animation-delay:0s"/>
+                                        <rect class="wave-bar-sm" x="8"  y="4"  width="3" height="20" rx="1.5" style="animation-delay:-0.08s"/>
+                                        <rect class="wave-bar-sm" x="14" y="9"  width="3" height="10" rx="1.5" style="animation-delay:-0.16s"/>
+                                        <rect class="wave-bar-sm" x="20" y="3"  width="3" height="22" rx="1.5" style="animation-delay:-0.24s"/>
+                                        <rect class="wave-bar-sm" x="26" y="6"  width="3" height="16" rx="1.5" style="animation-delay:-0.32s"/>
+                                        <rect class="wave-bar-sm" x="32" y="10" width="3" height="8"  rx="1.5" style="animation-delay:-0.4s"/>
+                                        <rect class="wave-bar-sm" x="38" y="5"  width="3" height="18" rx="1.5" style="animation-delay:-0.48s"/>
+                                        <rect class="wave-bar-sm" x="44" y="8"  width="3" height="12" rx="1.5" style="animation-delay:-0.56s"/>
+                                        <rect class="wave-bar-sm" x="50" y="4"  width="3" height="20" rx="1.5" style="animation-delay:-0.64s"/>
+                                        <rect class="wave-bar-sm" x="56" y="7"  width="3" height="14" rx="1.5" style="animation-delay:-0.72s"/>
+                                        <rect class="wave-bar-sm" x="62" y="9"  width="3" height="10" rx="1.5" style="animation-delay:-0.8s"/>
+                                        <rect class="wave-bar-sm" x="68" y="5"  width="3" height="18" rx="1.5" style="animation-delay:-0.88s"/>
+                                    </svg>
+                                </div>
                             </div>
                             <audio id="reg-audio-playback" controls style="display:none; width:100%; margin-top:8px;"></audio>
                         </div>
-                        <button id="reg-submit-btn" class="btn btn-primary" onclick="registerVoiceprint()">注册声纹</button>
+                        <button id="reg-submit-btn" class="btn btn-primary" onclick="registerVoiceprint()">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            注册声纹
+                        </button>
                         <div id="reg-status" class="status-msg"></div>
                     </div>
                     <div class="card">
@@ -233,13 +403,16 @@
                             <label for="guide-user">选择用户 *</label>
                             <select id="guide-user"></select>
                         </div>
-                        <button class="btn btn-primary" onclick="startGuideRegistration()">开始引导注册</button>
+                        <button class="btn btn-primary" onclick="startGuideRegistration()">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            开始引导注册
+                        </button>
 
                         <!-- 引导注册区域 -->
                         <div id="guide-area" style="display:none; margin-top:16px;">
                             <div class="guide-progress">
                                 <span id="guide-progress-text">0/8 完成</span>
-                                <div class="progress-bar">
+                                <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                                     <div id="guide-progress-fill" class="progress-fill" style="width:0%"></div>
                                 </div>
                             </div>
@@ -253,10 +426,32 @@
                                     <span class="record-icon"></span> 开始录音
                                 </button>
                                 <span id="guide-record-time" class="record-time">00:00</span>
+                                <div class="recording-waveform" aria-hidden="true">
+                                    <svg viewBox="0 0 84 28" class="waveform-svg-sm">
+                                        <rect class="wave-bar-sm" x="2"  y="7"  width="3" height="14" rx="1.5" style="animation-delay:0s"/>
+                                        <rect class="wave-bar-sm" x="8"  y="4"  width="3" height="20" rx="1.5" style="animation-delay:-0.08s"/>
+                                        <rect class="wave-bar-sm" x="14" y="9"  width="3" height="10" rx="1.5" style="animation-delay:-0.16s"/>
+                                        <rect class="wave-bar-sm" x="20" y="3"  width="3" height="22" rx="1.5" style="animation-delay:-0.24s"/>
+                                        <rect class="wave-bar-sm" x="26" y="6"  width="3" height="16" rx="1.5" style="animation-delay:-0.32s"/>
+                                        <rect class="wave-bar-sm" x="32" y="10" width="3" height="8"  rx="1.5" style="animation-delay:-0.4s"/>
+                                        <rect class="wave-bar-sm" x="38" y="5"  width="3" height="18" rx="1.5" style="animation-delay:-0.48s"/>
+                                        <rect class="wave-bar-sm" x="44" y="8"  width="3" height="12" rx="1.5" style="animation-delay:-0.56s"/>
+                                        <rect class="wave-bar-sm" x="50" y="4"  width="3" height="20" rx="1.5" style="animation-delay:-0.64s"/>
+                                        <rect class="wave-bar-sm" x="56" y="7"  width="3" height="14" rx="1.5" style="animation-delay:-0.72s"/>
+                                        <rect class="wave-bar-sm" x="62" y="9"  width="3" height="10" rx="1.5" style="animation-delay:-0.8s"/>
+                                        <rect class="wave-bar-sm" x="68" y="5"  width="3" height="18" rx="1.5" style="animation-delay:-0.88s"/>
+                                    </svg>
+                                </div>
                                 <input type="file" id="guide-file" accept="audio/*" hidden>
-                                <button id="guide-upload-btn" class="btn btn-secondary" onclick="document.getElementById('guide-file').click()">上传本段</button>
+                                <button id="guide-upload-btn" class="btn btn-secondary" onclick="document.getElementById('guide-file').click()" aria-label="上传本段音频">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    上传本段
+                                </button>
                                 <button id="guide-skip-btn" class="btn btn-secondary" onclick="skipGuideSegment()">跳过</button>
-                                <button id="guide-finish-btn" class="btn btn-primary" onclick="finishGuideRegistration()" style="display:none;">完成注册</button>
+                                <button id="guide-finish-btn" class="btn btn-primary" onclick="finishGuideRegistration()" style="display:none;">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                                    完成注册
+                                </button>
                             </div>
                             <div id="guide-quality" class="quality-indicator"></div>
                             <audio id="guide-processed-audio" controls style="display:none; width:100%; margin-bottom:12px;"></audio>
@@ -267,13 +462,13 @@
             </section>
 
             <!-- 身份验证 -->
-            <section id="tab-verify" class="tab-panel">
+            <section id="tab-verify" class="tab-panel" aria-label="身份验证">
                 <div class="panel-grid">
                     <div class="card">
                         <h3>语音验证</h3>
                         <div class="form-group">
                             <label>验证模式</label>
-                            <div class="radio-group">
+                            <div class="radio-group" role="radiogroup" aria-label="验证模式选择">
                                 <label class="radio-label">
                                     <input type="radio" name="verify-mode" value="identify" checked onchange="onVerifyModeChange()"> 身份识别（识别是谁）
                                 </label>
@@ -290,7 +485,10 @@
                             <label>上传音频文件</label>
                             <div class="file-upload">
                                 <input type="file" id="verify-file" accept="audio/*" hidden>
-                                <button class="btn btn-secondary" onclick="document.getElementById('verify-file').click()">选择文件</button>
+                                <button class="btn btn-secondary" onclick="document.getElementById('verify-file').click()" aria-label="选择验证音频文件">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    选择文件
+                                </button>
                                 <span id="verify-file-name">未选择文件</span>
                             </div>
                         </div>
@@ -301,14 +499,33 @@
                                     <span class="record-icon"></span> 开始录音
                                 </button>
                                 <span id="verify-record-time" class="record-time">00:00</span>
+                                <div class="recording-waveform" aria-hidden="true">
+                                    <svg viewBox="0 0 84 28" class="waveform-svg-sm">
+                                        <rect class="wave-bar-sm" x="2"  y="7"  width="3" height="14" rx="1.5" style="animation-delay:0s"/>
+                                        <rect class="wave-bar-sm" x="8"  y="4"  width="3" height="20" rx="1.5" style="animation-delay:-0.08s"/>
+                                        <rect class="wave-bar-sm" x="14" y="9"  width="3" height="10" rx="1.5" style="animation-delay:-0.16s"/>
+                                        <rect class="wave-bar-sm" x="20" y="3"  width="3" height="22" rx="1.5" style="animation-delay:-0.24s"/>
+                                        <rect class="wave-bar-sm" x="26" y="6"  width="3" height="16" rx="1.5" style="animation-delay:-0.32s"/>
+                                        <rect class="wave-bar-sm" x="32" y="10" width="3" height="8"  rx="1.5" style="animation-delay:-0.4s"/>
+                                        <rect class="wave-bar-sm" x="38" y="5"  width="3" height="18" rx="1.5" style="animation-delay:-0.48s"/>
+                                        <rect class="wave-bar-sm" x="44" y="8"  width="3" height="12" rx="1.5" style="animation-delay:-0.56s"/>
+                                        <rect class="wave-bar-sm" x="50" y="4"  width="3" height="20" rx="1.5" style="animation-delay:-0.64s"/>
+                                        <rect class="wave-bar-sm" x="56" y="7"  width="3" height="14" rx="1.5" style="animation-delay:-0.72s"/>
+                                        <rect class="wave-bar-sm" x="62" y="9"  width="3" height="10" rx="1.5" style="animation-delay:-0.8s"/>
+                                        <rect class="wave-bar-sm" x="68" y="5"  width="3" height="18" rx="1.5" style="animation-delay:-0.88s"/>
+                                    </svg>
+                                </div>
                             </div>
                             <audio id="verify-audio-playback" controls style="display:none; width:100%; margin-top:8px;"></audio>
                         </div>
                         <div class="form-group">
                             <label><span id="threshold-label-text">归一化置信度阈值</span>: <span id="threshold-value">0.75</span></label>
-                            <input type="range" id="threshold-slider" min="0.5" max="0.95" step="0.01" value="0.75" oninput="document.getElementById('threshold-value').textContent=this.value">
+                            <input type="range" id="threshold-slider" min="0.5" max="0.95" step="0.01" value="0.75" oninput="document.getElementById('threshold-value').textContent=this.value" aria-label="置信度阈值滑块">
                         </div>
-                        <button class="btn btn-primary" onclick="startVerification()">开始验证</button>
+                        <button class="btn btn-primary" onclick="startVerification()">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                            开始验证
+                        </button>
                         <div id="verify-status" class="status-msg"></div>
                     </div>
                     <div class="card">
@@ -318,33 +535,42 @@
                             <h3 id="result-text">等待验证...</h3>
                             <div id="result-detail" class="result-detail"></div>
                         </div>
-                        <button class="btn btn-secondary" onclick="clearResult()" style="margin-top:12px;">清除结果</button>
+                        <button class="btn btn-secondary" onclick="clearResult()" style="margin-top:12px;">
+                            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            清除结果
+                        </button>
                     </div>
                 </div>
             </section>
 
             <!-- 验证日志 -->
-            <section id="tab-logs" class="tab-panel">
+            <section id="tab-logs" class="tab-panel" aria-label="验证日志">
                 <div class="card">
                     <div class="card-header">
                         <h3>验证日志</h3>
                         <div>
-                            <button class="btn btn-secondary" onclick="loadLogs()">刷新</button>
-                            <button class="btn btn-danger" onclick="clearLogs()">清空日志</button>
+                            <button class="btn btn-secondary" onclick="loadLogs()" aria-label="刷新验证日志">
+                                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                刷新
+                            </button>
+                            <button class="btn btn-danger" onclick="clearLogs()" aria-label="清空所有验证日志">
+                                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                清空日志
+                            </button>
                         </div>
                     </div>
                     <div class="table-wrapper">
-                        <table id="logs-table">
+                        <table id="logs-table" aria-label="验证日志列表">
                             <thead>
                                 <tr>
-                                    <th>ID</th>
-                                    <th>模式</th>
-                                    <th>用户</th>
-                                    <th>原始相似度</th>
-                                    <th>归一化置信度</th>
-                                    <th>阈值</th>
-                                    <th>结果</th>
-                                    <th>时间</th>
+                                    <th scope="col">ID</th>
+                                    <th scope="col">模式</th>
+                                    <th scope="col">用户</th>
+                                    <th scope="col">原始相似度</th>
+                                    <th scope="col">归一化置信度</th>
+                                    <th scope="col">阈值</th>
+                                    <th scope="col">结果</th>
+                                    <th scope="col">时间</th>
                                 </tr>
                             </thead>
                             <tbody id="logs-tbody"></tbody>
