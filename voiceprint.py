@@ -130,6 +130,8 @@ class VoiceprintExtractor:
 
     SUPPORTED_FORMATS = {'.wav', '.flac', '.ogg', '.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
     NEED_CONVERT = {'.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
+    # Formats that soundfile cannot read natively and must be converted via ffmpeg
+    _FFMPEG_REQUIRED = {'.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
 
     def __init__(self, model_name=MODEL_NAME, force_encoder=None):
         self.model_name = model_name
@@ -246,6 +248,8 @@ class VoiceprintExtractor:
         ext = os.path.splitext(audio_path)[1].lower()
         if ext in {'.wav', '.flac', '.ogg'}:
             return audio_path, False
+        # Formats that need conversion (mp3, m4a, aac, wma, opus, webm, etc.)
+        # Try ffmpeg first (handles all formats reliably), fall back to soundfile.
         if self.ffmpeg_path:
             try:
                 return self._convert_audio_ffmpeg(audio_path), True
@@ -387,12 +391,34 @@ class VoiceprintExtractor:
     def extract_embedding(self, audio_path):
         try:
             if self._sv_pipeline is not None:
-                with torch.no_grad():
-                    res = self._sv_pipeline([audio_path], output_emb=True)
-                emb = np.asarray(res["embs"], dtype=np.float32)[0]
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                return self._normalize(emb)
+                # ModelScope pipeline does its own I/O and may not support all
+                # container formats (e.g. WebM/Opus from browser recordings).
+                # Convert to WAV first so the pipeline always gets a format it
+                # can read reliably.
+                ext = os.path.splitext(audio_path)[1].lower()
+                wav_path = audio_path
+                temp_wav = None
+                if ext not in {'.wav', '.flac', '.ogg'}:
+                    try:
+                        wav_path, _ = self._convert_audio(audio_path)
+                        temp_wav = wav_path
+                    except Exception:
+                        # If conversion fails, try passing the original path
+                        # and let the pipeline handle it (best-effort).
+                        wav_path = audio_path
+                try:
+                    with torch.no_grad():
+                        res = self._sv_pipeline([wav_path], output_emb=True)
+                    emb = np.asarray(res["embs"], dtype=np.float32)[0]
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    return self._normalize(emb)
+                finally:
+                    if temp_wav and os.path.exists(temp_wav):
+                        try:
+                            os.remove(temp_wav)
+                        except Exception:
+                            pass
             waveform, _ = self.load_audio(audio_path)
             waveform = waveform.to(self.device)
             with torch.no_grad():

@@ -149,14 +149,48 @@ class ERes2NetV2Encoder(_LazyHEncoder):
 
     def embed(self, wav_path: str) -> np.ndarray:
         # The ModelScope SV pipeline is path-based and does its own preprocessing.
+        # However, it may not support all container formats (e.g. WebM from browser
+        # recordings). Convert to WAV first for reliability.
         if self._model is None:
             self._fail()
-        with torch.no_grad():
-            res = self._model([wav_path], output_emb=True)
-        emb = np.asarray(res["embs"], dtype=np.float32)[0]
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        return _normalize(emb)
+        import os, tempfile, uuid, soundfile as sf
+        from scipy.signal import resample as scipy_resample
+        ext = os.path.splitext(wav_path)[1].lower()
+        temp_wav = None
+        if ext not in {'.wav', '.flac', '.ogg'}:
+            # Try soundfile conversion first (handles mp3, ogg, etc.)
+            try:
+                data, sr = sf.read(wav_path, dtype="float32")
+                if data.ndim > 1:
+                    data = data.mean(axis=1)
+                if sr != self.sample_rate:
+                    data = scipy_resample(data, int(len(data) * self.sample_rate / sr))
+                    sr = self.sample_rate
+                temp_wav = os.path.join(tempfile.gettempdir(), f"vp_enc_{uuid.uuid4().hex}.wav")
+                sf.write(temp_wav, data, sr, subtype="PCM_16")
+                wav_path = temp_wav
+            except Exception:
+                # If soundfile can't read it, try ffmpeg via VoiceprintExtractor
+                try:
+                    from voiceprint import VoiceprintExtractor
+                    _tmp_ext = VoiceprintExtractor()
+                    wav_path, _ = _tmp_ext._convert_audio(wav_path)
+                    temp_wav = wav_path
+                except Exception:
+                    pass  # best-effort: pass original path
+        try:
+            with torch.no_grad():
+                res = self._model([wav_path], output_emb=True)
+            emb = np.asarray(res["embs"], dtype=np.float32)[0]
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            return _normalize(emb)
+        finally:
+            if temp_wav and os.path.exists(temp_wav):
+                try:
+                    os.remove(temp_wav)
+                except Exception:
+                    pass
 
     def _embed_from_model(self, waveform: torch.Tensor, sr: int) -> np.ndarray:
         raise NotImplementedError(
