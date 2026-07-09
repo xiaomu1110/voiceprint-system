@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>配电柜智能语音识别系统</title>
+    <title>正超 · 配电柜智能语音识别系统</title>
+    <link rel="icon" type="image/png" href="/static/img/zhengchao-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -11,16 +15,24 @@
         <!-- 加载遮罩 -->
         <div id="loading-overlay" class="loading-overlay">
             <div class="loading-content">
+                <div class="brand-logo brand-logo-lg">
+                    <img src="/static/img/zhengchao-logo.png" alt="正超" class="brand-logo-img">
+                </div>
                 <h2>配电柜智能语音识别系统</h2>
-                <div class="spinner"></div>
                 <p id="loading-text">正在加载声纹识别模型，请稍候...</p>
+                <div class="eq-strip" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
             </div>
         </div>
 
         <!-- 主界面 -->
         <header class="app-header">
             <div class="header-left">
-                <h1>配电柜智能语音识别系统</h1>
+                <div class="brand-logo">
+                    <img src="/static/img/zhengchao-logo.png" alt="正超 ZHENGCHAO" class="brand-logo-img">
+                </div>
+                <span class="brand-sub">配电柜智能语音识别系统</span>
             </div>
             <div class="header-right">
                 <span id="status-indicator" class="status-dot status-loading"></span>
@@ -52,7 +64,8 @@
         <div class="app-shell">
             <aside class="sidebar">
                 <nav class="tab-nav">
-                    <button class="tab-btn active" data-tab="status">系统状态</button>
+                    <button class="tab-btn active" data-tab="intro">项目介绍</button>
+                    <button class="tab-btn" data-tab="status">系统状态</button>
                     <button class="tab-btn" data-tab="users">用户管理</button>
                     <button class="tab-btn" data-tab="register">声纹注册</button>
                     <button class="tab-btn" data-tab="verify">身份验证</button>
@@ -61,8 +74,53 @@
             </aside>
 
             <main class="tab-content">
+            <!-- 项目介绍 -->
+            <section id="tab-intro" class="tab-panel active">
+                <div class="card intro-wrap">
+                    <h3>项目介绍</h3>
+                    <p class="intro-lead">
+                        <strong>配电柜智能语音识别系统</strong>面向配电柜操作场景，以“声音即身份”为核心理念，通过声纹生物特征对作业人员进行身份认证，替代传统密码与刷卡，确保操作合规、责任到人、全程可追溯。系统依托 NVIDIA GPU 加速，保障现场认证的实时响应。
+                    </p>
+                    <div class="intro-capability">
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">人员管理</div><div class="cap-desc">录入与维护班组操作人员信息</div></div></div>
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">声纹建档</div><div class="cap-desc">分段引导采集，多段融合建立稳定档案</div></div></div>
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">质量管控</div><div class="cap-desc">自动评估录音质量，过滤不合格片段</div></div></div>
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">身份识别</div><div class="cap-desc">一句话识别“是谁”（1:N）</div></div></div>
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">身份验证</div><div class="cap-desc">确认“是否为指定人员”（1:1）</div></div></div>
+                        <div class="cap-item"><span class="cap-dot"></span><div><div class="cap-title">全程留痕</div><div class="cap-desc">验证记录可查询、可追溯</div></div></div>
+                    </div>
+
+                    <div class="flow-section">
+                        <h4>声纹建档流程</h4>
+                        <div class="flow-row">
+                            <div class="flow-node"><div class="flow-num">01</div><div class="flow-title">选择人员</div><div class="flow-sub">录入班组操作人员</div></div>
+                            <div class="flow-arrow">→</div>
+                            <div class="flow-node"><div class="flow-num">02</div><div class="flow-title">语音采集</div><div class="flow-sub">朗读引导文本 · 上传 · 录音</div></div>
+                            <div class="flow-arrow">→</div>
+                            <div class="flow-node"><div class="flow-num">03</div><div class="flow-title">质量评估</div><div class="flow-sub">过滤噪声 / 静音 / 削波片段</div></div>
+                            <div class="flow-arrow">→</div>
+                            <div class="flow-node"><div class="flow-num">04</div><div class="flow-title">声纹融合入库</div><div class="flow-sub">多段融合形成稳定声纹档案</div></div>
+                        </div>
+                    </div>
+
+                    <div class="flow-section">
+                        <h4>身份认证流程</h4>
+                        <div class="flow-row phase-verify">
+                            <div class="flow-node"><div class="flow-num">05</div><div class="flow-title">现场语音</div><div class="flow-sub">操作前语音输入</div></div>
+                            <div class="flow-arrow">→</div>
+                            <div class="flow-node"><div class="flow-num">06</div><div class="flow-title">声纹比对</div><div class="flow-sub">与在库声纹档案匹配</div></div>
+                            <div class="flow-arrow">→</div>
+                            <div class="flow-node"><div class="flow-num">07</div><div class="flow-title">识别 / 验证</div><div class="flow-sub">1:N 识别 · 1:1 验证</div></div>
+                            <div class="flow-arrow">→</div>
+                            <div class="flow-node"><div class="flow-num">08</div><div class="flow-title">记录留痕</div><div class="flow-sub">验证结果可查询追溯</div></div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
             <!-- 系统状态 -->
-            <section id="tab-status" class="tab-panel active">
+            <section id="tab-status" class="tab-panel">
                 <div class="card system-card">
                     <div class="card-header">
                         <h3>系统运行状态</h3>

@@ -146,7 +146,7 @@ function loadUsers() {
             usersList = users;
             const tbody = document.getElementById('users-tbody');
             tbody.innerHTML = users.length === 0
-                ? '<tr><td colspan="6" style="text-align:center;color:#999;">暂无用户</td></tr>'
+                ? '<tr><td colspan="6" style="text-align:center;color:#8A97A3;">暂无用户</td></tr>'
                 : users.map(u => `
                     <tr>
                         <td>${u.id}</td>
@@ -502,7 +502,7 @@ function loadLogs() {
         .then(logs => {
             const tbody = document.getElementById('logs-tbody');
             tbody.innerHTML = logs.length === 0
-                ? '<tr><td colspan="8" style="text-align:center;color:#999;">暂无日志</td></tr>'
+                ? '<tr><td colspan="8" style="text-align:center;color:#8A97A3;">暂无日志</td></tr>'
                 : logs.map(l => {
                     const result = normalizeLogResult(l);
                     const modeLabel = l.mode_label || (l.mode === 'verify' ? '身份验证' : '身份识别');
@@ -515,7 +515,7 @@ function loadLogs() {
                         <td>${formatScore(l.similarity)}</td>
                         <td>${formatScore(l.normalized_confidence)}</td>
                         <td title="${escHtml(thresholdTypeLabel)}">${formatScore(l.threshold)}</td>
-                        <td style="color:${result.code === 'match' ? '#4caf50' : '#f44336'}">${escHtml(result.label)}</td>
+                        <td style="color:${result.code === 'match' ? '#2DD4BF' : '#F0534A'}">${escHtml(result.label)}</td>
                         <td>${l.created_at || ''}</td>
                     </tr>
                 `;
@@ -570,7 +570,7 @@ function loadGuideSegment(index) {
     if (index >= guideTexts.length) {
         // 所有段落录完，显示完成按钮
         document.getElementById('guide-quality').textContent = '所有段落录制完成，请点击"完成注册"';
-        document.getElementById('guide-quality').style.color = '#1a73e8';
+        document.getElementById('guide-quality').style.color = '#FFB020';
         document.getElementById('guide-record-btn').disabled = true;
         document.getElementById('guide-upload-btn').disabled = true;
         document.getElementById('guide-skip-btn').style.display = 'none';
@@ -647,7 +647,7 @@ function processGuideAudio(audioFile, source) {
 
     const qualityEl = document.getElementById('guide-quality');
     qualityEl.textContent = '正在预处理音频...';
-    qualityEl.style.color = '#1a73e8';
+    qualityEl.style.color = '#FFB020';
     document.getElementById('guide-record-btn').disabled = true;
     document.getElementById('guide-upload-btn').disabled = true;
 
@@ -672,7 +672,7 @@ function processGuideAudio(audioFile, source) {
             audio.style.display = 'block';
 
             qualityEl.textContent = `质量: ${quality.quality_text} (${quality.score}分，有效语音 ${quality.effective_duration}s) · ${quality.message}`;
-            qualityEl.style.color = quality.score >= 85 ? '#4caf50' : quality.score >= 70 ? '#ff9800' : quality.score >= 60 ? '#1a73e8' : '#f44336';
+            qualityEl.style.color = quality.score >= 85 ? '#2DD4BF' : quality.score >= 70 ? '#FFB020' : quality.score >= 60 ? '#6CB6FF' : '#F0534A';
             document.getElementById('guide-finish-btn').disabled = guideSegments.length === 0;
             updateGuideResults();
 
@@ -684,7 +684,7 @@ function processGuideAudio(audioFile, source) {
         })
         .catch(err => {
             qualityEl.textContent = '预处理失败: ' + err.message;
-            qualityEl.style.color = '#f44336';
+            qualityEl.style.color = '#F0534A';
         })
         .finally(() => {
             if (guideCurrentIndex < guideTexts.length) {
@@ -760,7 +760,7 @@ function finishGuideRegistration() {
     // 显示提交状态
     const qualityEl = document.getElementById('guide-quality');
     qualityEl.textContent = '正在进行质量门控、一致性校验和声纹融合...';
-    qualityEl.style.color = '#1a73e8';
+    qualityEl.style.color = '#FFB020';
     document.getElementById('guide-record-btn').disabled = true;
     document.getElementById('guide-upload-btn').disabled = true;
     document.getElementById('guide-finish-btn').disabled = true;
