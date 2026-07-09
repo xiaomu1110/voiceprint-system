@@ -12,12 +12,19 @@ import numpy as np
 import os
 import tempfile
 import subprocess
+import uuid
 import soundfile as sf
 from scipy.signal import butter, filtfilt
 from config import (
     MODEL_NAME, SAMPLE_RATE, SIMILARITY_THRESHOLD,
     CUDA_DEVICE_INDEX, CONFIDENCE_SCALE,
+    VERIFY_THRESHOLD, IDENTIFY_ABS_FLOOR, IDENTIFY_MARGIN,
+    CONSISTENCY_THRESHOLD, FUSION_TRIM_RATIO,
+    USE_ASNORM, AS_NORM_K, USE_SILERO_VAD,
+    ENCODER_NAME, ERES2NETV2_MODEL_ID,
 )
+from scoring import CohortManager
+import vad
 
 
 def _format_bytes(value: int | float | None) -> str:
@@ -124,12 +131,19 @@ class VoiceprintExtractor:
     SUPPORTED_FORMATS = {'.wav', '.flac', '.ogg', '.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
     NEED_CONVERT = {'.mp3', '.m4a', '.aac', '.wma', '.opus', '.webm'}
 
-    def __init__(self, model_name=MODEL_NAME):
+    def __init__(self, model_name=MODEL_NAME, force_encoder=None):
         self.model_name = model_name
         self.model = None
+        self._sv_pipeline = None
+        self.encoder_name = "ecapa"
         self.ffmpeg_path = self._find_ffmpeg()
         self.device, self.device_name = self._select_device()
-        self._load_model()
+        want = force_encoder or ENCODER_NAME
+        if want == "erres2netv2" and self._load_eres2netv2():
+            self.encoder_name = "erres2netv2"
+            self.model_name = "ERes2NetV2"
+        else:
+            self._load_model()
 
     def _select_device(self):
         """Select and validate the required CUDA device."""
@@ -190,10 +204,23 @@ class VoiceprintExtractor:
         )
         print(f"Model loaded on GPU: {self.device} ({self.device_name})")
 
+    def _load_eres2netv2(self):
+        """Load the ModelScope ERes2NetV2 speaker-verification pipeline (Chinese-strong).
+        Returns True on success; False to fall back to ECAPA."""
+        try:
+            from modelscope.pipelines import pipeline  # type: ignore
+            self._sv_pipeline = pipeline("speaker-verification", model=ERES2NETV2_MODEL_ID)
+            print(f"Model loaded: ERes2NetV2 ({ERES2NETV2_MODEL_ID}) on {self.device} ({self.device_name})")
+            return True
+        except Exception as e:
+            print(f"ERes2NetV2 load failed, falling back to ECAPA: {e}")
+            self._sv_pipeline = None
+            return False
+
     def _convert_audio_ffmpeg(self, audio_path):
         if not self.ffmpeg_path:
             raise ValueError("ffmpeg not found, install ffmpeg or use WAV/FLAC/OGG")
-        temp_path = os.path.join(tempfile.gettempdir(), f"vp_temp_{os.getpid()}.wav")
+        temp_path = os.path.join(tempfile.gettempdir(), f"vp_temp_{uuid.uuid4().hex}.wav")
         try:
             cmd = [self.ffmpeg_path, '-i', audio_path, '-ar', str(SAMPLE_RATE),
                    '-ac', '1', '-acodec', 'pcm_s16le', '-f', 'wav', '-y', temp_path]
@@ -205,7 +232,7 @@ class VoiceprintExtractor:
             raise ValueError("Audio conversion timeout")
 
     def _convert_audio_soundfile(self, audio_path):
-        temp_path = os.path.join(tempfile.gettempdir(), f"vp_temp_{os.getpid()}.wav")
+        temp_path = os.path.join(tempfile.gettempdir(), f"vp_temp_{uuid.uuid4().hex}.wav")
         try:
             audio, sr = sf.read(audio_path, dtype='float32')
             if len(audio.shape) > 1:
@@ -283,7 +310,13 @@ class VoiceprintExtractor:
         peak = float(np.max(abs_audio))
         threshold = max(0.01, rms * 0.35)
         active = abs_audio > threshold
-        effective_duration = float(np.sum(active) / sr)
+        if USE_SILERO_VAD:
+            try:
+                effective_duration = vad.effective_speech_duration(audio, sr, use_silero=True)
+            except Exception:
+                effective_duration = float(np.sum(active) / sr)
+        else:
+            effective_duration = float(np.sum(active) / sr)
         silence_ratio = 1.0 - (effective_duration / duration if duration else 0.0)
         clipping_ratio = float(np.mean(abs_audio >= 0.98))
 
@@ -353,11 +386,18 @@ class VoiceprintExtractor:
 
     def extract_embedding(self, audio_path):
         try:
+            if self._sv_pipeline is not None:
+                with torch.no_grad():
+                    res = self._sv_pipeline([audio_path], output_emb=True)
+                emb = np.asarray(res["embs"], dtype=np.float32)[0]
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                return self._normalize(emb)
             waveform, _ = self.load_audio(audio_path)
             waveform = waveform.to(self.device)
             with torch.no_grad():
                 embedding = self.model.encode_batch(waveform)
-            return embedding.squeeze().cpu().numpy()
+            return self._normalize(embedding.squeeze().cpu().numpy())
         except Exception as e:
             print(f"Feature extraction failed: {e}")
             raise
@@ -376,6 +416,24 @@ class VoiceprintExtractor:
         embedding1 = embedding1 / np.linalg.norm(embedding1)
         embedding2 = embedding2 / np.linalg.norm(embedding2)
         return float(np.dot(embedding1, embedding2))
+
+    @staticmethod
+    def _normalize(embedding):
+        norm = float(np.linalg.norm(embedding))
+        if norm < 1e-9:
+            return embedding.astype(np.float32)
+        return (embedding / norm).astype(np.float32)
+
+    def _fuse_embeddings(self, embeddings):
+        """Fuse segment embeddings in normalized space, with optional outlier trimming."""
+        embs = [self._normalize(e) for e in embeddings]
+        if len(embs) >= 4 and FUSION_TRIM_RATIO > 0:
+            centroid = self._normalize(np.mean(embs, axis=0))
+            sims = [self.compute_similarity(e, centroid) for e in embs]
+            keep = max(1, int(np.ceil(len(embs) * (1.0 - FUSION_TRIM_RATIO))))
+            idx = np.argsort(sims)[-keep:]
+            embs = [embs[i] for i in idx]
+        return self._normalize(np.mean(embs, axis=0))
 
     def verify_speaker(self, audio_path, reference_embeddings, threshold=SIMILARITY_THRESHOLD):
         test_embedding = self.extract_embedding(audio_path)
@@ -417,6 +475,20 @@ class VoiceprintDatabase:
     def __init__(self, db_manager, extractor):
         self.db = db_manager
         self.extractor = extractor
+        self.cohort = CohortManager(k=AS_NORM_K)
+        self._cohort_stamp = -1
+
+    def _refresh_cohort(self):
+        """Reload the impostor cohort when AS-norm is enabled and the pool is stale."""
+        if not USE_ASNORM:
+            return
+        try:
+            n = len(self.db.get_all_voiceprints())
+        except Exception:
+            n = -1
+        if not self.cohort.is_ready() or n != self._cohort_stamp:
+            self.cohort.load_from_db(self.db, self.extractor)
+            self._cohort_stamp = n
 
     def register_voiceprint(self, user_id, audio_path):
         embedding = self.extractor.extract_embedding(audio_path)
@@ -427,7 +499,7 @@ class VoiceprintDatabase:
         user_id,
         audio_items,
         min_quality_score=60,
-        consistency_threshold=0.25,
+        consistency_threshold=CONSISTENCY_THRESHOLD,
     ):
         candidates = []
         rejected = []
@@ -460,15 +532,14 @@ class VoiceprintDatabase:
 
         existing_segments = self.db.get_enrollment_segments(user_id)
         legacy_voiceprints = [] if existing_segments else self.db.get_voiceprints(user_id)
-        reference_embeddings = [seg["embedding"] for seg in existing_segments]
-        reference_embeddings.extend(vp["embedding"] for vp in legacy_voiceprints)
+        reference_embeddings = [self.extractor._normalize(seg["embedding"]) for seg in existing_segments]
+        reference_embeddings.extend(self.extractor._normalize(vp["embedding"]) for vp in legacy_voiceprints)
 
         accepted = []
         if consistency_threshold is None:
             accepted = candidates
         elif reference_embeddings:
-            reference = np.mean(reference_embeddings, axis=0)
-            reference = reference / np.linalg.norm(reference)
+            reference = self.extractor._normalize(np.mean(reference_embeddings, axis=0))
             for item in candidates:
                 score = self.extractor.compute_similarity(item["embedding"], reference)
                 item["consistency_score"] = score
@@ -481,8 +552,7 @@ class VoiceprintDatabase:
                 else:
                     accepted.append(item)
         elif len(candidates) >= 3:
-            centroid = np.mean([item["embedding"] for item in candidates], axis=0)
-            centroid = centroid / np.linalg.norm(centroid)
+            centroid = self.extractor._normalize(np.mean([item["embedding"] for item in candidates], axis=0))
             for item in candidates:
                 score = self.extractor.compute_similarity(item["embedding"], centroid)
                 item["consistency_score"] = score
@@ -501,8 +571,7 @@ class VoiceprintDatabase:
             raise ValueError("All audio segments were rejected by quality or consistency checks")
 
         all_embeddings = reference_embeddings + [item["embedding"] for item in accepted]
-        fused = np.mean(all_embeddings, axis=0)
-        fused = fused / np.linalg.norm(fused)
+        fused = self.extractor._fuse_embeddings(all_embeddings)
 
         segment_ids = []
         for item in accepted:
@@ -607,7 +676,15 @@ class VoiceprintDatabase:
         best_uid = best["user_id"]
         best_score = best["raw_similarity"]
         best_confidence = best["normalized_confidence"]
-        is_matched = best_confidence >= threshold
+        second_score = candidates[1]["raw_similarity"] if len(candidates) >= 2 else 0.0
+        top1_margin = (best_score - second_score) if len(candidates) >= 2 else None
+        # Joint decision: softmax confidence (relative rank) AND absolute cosine floor AND
+        # top-1 advantage margin. The absolute floor prevents N=1 / low-score false accepts.
+        is_matched = (
+            best_confidence >= threshold
+            and best_score >= IDENTIFY_ABS_FLOOR
+            and (top1_margin is None or top1_margin >= IDENTIFY_MARGIN)
+        )
 
         result = {
             "matched": is_matched,
@@ -616,6 +693,9 @@ class VoiceprintDatabase:
             "department": best["department"] if is_matched else "",
             "similarity": best_score,
             "normalized_confidence": best_confidence,
+            "absolute_floor": IDENTIFY_ABS_FLOOR,
+            "top1_margin": top1_margin,
+            "margin_threshold": IDENTIFY_MARGIN,
             "threshold": threshold,
             "threshold_type": "normalized_confidence",
             "candidate_count": len(candidates),
@@ -636,7 +716,7 @@ class VoiceprintDatabase:
         )
         return result
 
-    def verify_speaker_by_id(self, audio_path, user_id, threshold=SIMILARITY_THRESHOLD):
+    def verify_speaker_by_id(self, audio_path, user_id, threshold=VERIFY_THRESHOLD):
         user_voiceprints = self.db.get_voiceprints(user_id)
         user = self.db.get_user(user_id)
         if not user_voiceprints:
@@ -659,8 +739,24 @@ class VoiceprintDatabase:
                 "department": user.get("department", "") if user else "",
                 "message": "该用户尚未注册声纹",
             }
-        user_embeddings = [vp["embedding"] for vp in user_voiceprints]
-        result = self.extractor.verify_speaker_by_id(audio_path, user_id, user_embeddings, threshold)
+        segments = self.db.get_enrollment_segments(user_id)
+        user_embeddings = (
+            [seg["embedding"] for seg in segments] if segments
+            else [vp["embedding"] for vp in user_voiceprints]
+        )
+        test_embedding = self.extractor.extract_embedding(audio_path)
+        similarities = [self.extractor.compute_similarity(test_embedding, ref) for ref in user_embeddings]
+        max_sim = max(similarities) if similarities else 0.0
+        best_idx = int(np.argmax(similarities)) if similarities else 0
+        result = {"matched": max_sim >= threshold, "similarity": max_sim}
+        if USE_ASNORM:
+            self._refresh_cohort()
+            if self.cohort.is_ready():
+                best_ref = user_embeddings[best_idx]
+                result["score_asnorm"] = self.cohort.as_norm(
+                    test_embedding, best_ref, max_sim, exclude_user_id=user_id
+                )
+                result["asnorm_enabled"] = True
         result.update({
             "user_id": user_id,
             "user_name": user["name"] if user else "未知",
@@ -675,7 +771,7 @@ class VoiceprintDatabase:
             threshold=threshold,
             threshold_type="raw_similarity",
             mode="verify",
-            candidate_count=len(user_voiceprints),
+            candidate_count=len(user_embeddings),
             candidates=None,
         )
         return result

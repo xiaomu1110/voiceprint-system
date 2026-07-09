@@ -120,9 +120,19 @@ export VOICEPRINT_CUDA_DEVICE_INDEX=0
 | `VOICEPRINT_CUDA_DEVICE_INDEX` | `0` | CUDA GPU 设备编号 |
 | `VOICEPRINT_DATA_DIR` | `data` | 数据目录 |
 | `VOICEPRINT_DB_PATH` | `data/voiceprints.db` | SQLite 数据库路径 |
-| `VOICEPRINT_THRESHOLD` | `0.75` | 默认验证阈值；1:N 身份识别使用归一化置信度，1:1 身份验证使用原始相似度 |
+| `VOICEPRINT_THRESHOLD` | `0.75` | 默认阈值（向后兼容；等价于 1:1 原始相似度阈值） |
+| `VOICEPRINT_VERIFY_THRESHOLD` | `0.75` | 1:1 身份验证的原始相似度阈值（模板集 max 打分） |
+| `VOICEPRINT_IDENTIFY_ABS_FLOOR` | `0.55` | 1:N 识别的绝对相似度地板，防止 N=1/低分误纳 |
+| `VOICEPRINT_IDENTIFY_MARGIN` | `0.08` | 1:N 识别 top-1 与 top-2 的最小差值（N≥2 时生效） |
+| `VOICEPRINT_CONSISTENCY_THRESHOLD` | `0.45` | 注册时新片段与已有声纹的最小一致性 |
+| `VOICEPRINT_FUSION_TRIM_RATIO` | `0.1` | 融合时剔除离群片段的比例（0 关闭） |
 | `VOICEPRINT_SAMPLE_RATE` | `16000` | 音频采样率 |
 | `VOICEPRINT_CONFIDENCE_SCALE` | `8.0` | 识别归一化置信度的 softmax 缩放系数 |
+| `VOICEPRINT_USE_ASNORM` | `false` | 启用自适应分数归一化（AS-norm，需先在目标域标定阈值） |
+| `VOICEPRINT_ASNORM_K` | `200` | AS-norm 的 cohort top-K 数量 |
+| `VOICEPRINT_USE_SILERO_VAD` | `true` | Silero VAD 估算有效语音时长（失败回退能量法） |
+| `VOICEPRINT_ENCODER` | `erres2netv2` | 说话人编码后端：`erres2netv2`（中文强，默认）或 `ecapa`（回退） |
+| `VOICEPRINT_ERES2NETV2_MODEL` | `iic/speech_eres2netv2_sv_zh-cn_16k-common` | ERes2NetV2 的 ModelScope 模型 id |
 | `VOICEPRINT_ADMIN_USER` | `admin` | 系统重置管理员账号 |
 | `VOICEPRINT_ADMIN_PASS` | `123456` | 系统重置管理员密码 |
 | `VOICEPRINT_HOST` | `0.0.0.0` | 服务监听地址 |
@@ -136,7 +146,9 @@ voiceprint-system/
 ├── web_server.py       # Flask Web 服务和 API
 ├── config.py           # 配置项和环境变量
 ├── database.py         # SQLite 数据库管理
-├── voiceprint.py       # 声纹处理、GPU 检测、质量评估和融合逻辑
+├── voiceprint.py       # 声纹处理、GPU 检测、质量评估、融合与判定
+├── scoring.py          # AS-norm 分数归一化、cohort 管理、多模型分数融合
+├── vad.py              # 语音活动检测（Silero 可选，能量法回退）
 ├── pyproject.toml      # 项目依赖配置
 ├── uv.lock             # uv 锁文件
 ├── .python-version     # Python 版本
@@ -144,16 +156,39 @@ voiceprint-system/
 │   ├── setup.ps1       # Windows 安装脚本
 │   ├── setup.sh        # Linux 安装脚本
 │   ├── bootstrap.py    # GPU 检测和 CUDA PyTorch 安装
-│   └── doctor.py       # 环境检查
+│   ├── doctor.py       # 环境检查
+│   ├── calibrate.py    # 阈值标定（DET/EER/minDCF，分域）
+│   ├── eval.py         # 回归评测
+│   ├── test_m0_logic.py # M0 安全/融合逻辑单测
+│   └── test_scoring.py # AS-norm/融合单测
 ├── templates/
 │   └── index.html      # 前端页面
 ├── static/
 │   ├── css/style.css   # 样式
-│   └── js/app.js       # 前端逻辑
+│   ├── js/app.js       # 前端逻辑
+│   └── img/            # 正超 LOGO 等图片
 └── data/               # 运行时数据，不提交到仓库
     ├── audio_files/
     ├── models/
     └── voiceprints.db
+```
+
+## 算法优化与评测
+
+本版本对识别算法做了可靠性增强（M0/M1）：
+
+- **1:N 识别安全修复**：在归一化置信度之外，增加绝对相似度地板与 top-1 优势比联判，根治"N=1 时任意音频必匹配"的误纳。
+- **归一化空间融合**：注册时各片段先 L2 归一化再融合（含离群剔除），避免高范数低质片段污染档案；1:1 验证改用模板集 max 打分，提升同人分数。
+- **AS-norm / VAD（默认关）**：`scoring.py` 提供自适应分数归一化与 cohort 管理；`vad.py` 提供 Silero VAD（失败回退能量法）。启用前需在目标域标定阈值。
+- **工程加固**：SQLite WAL + busy_timeout、临时文件 uuid、关闭单条注册质量门绕过。
+
+阈值标定与回归评测（数据集目录结构：`data/eval/<域>/<用户编号>/*.wav`）：
+
+```bash
+.venv/Scripts/python.exe scripts/calibrate.py --eval-dir data/eval --out data/eval/report.json
+.venv/Scripts/python.exe scripts/eval.py --eval-dir data/eval/mandarin --threshold 0.75
+.venv/Scripts/python.exe scripts/test_m0_logic.py
+.venv/Scripts/python.exe scripts/test_scoring.py
 ```
 
 ## 技术栈

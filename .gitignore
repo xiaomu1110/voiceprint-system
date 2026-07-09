@@ -42,3 +42,7 @@ logs/
 # Environment
 .env
 .env.local
+
+# Agent / tool sessions
+.qoder/
+.agents/

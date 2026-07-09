@@ -15,6 +15,28 @@ DB_PATH = os.environ.get("VOICEPRINT_DB_PATH", os.path.join(DATA_DIR, "voiceprin
 
 # Voiceprint
 SIMILARITY_THRESHOLD = float(os.environ.get("VOICEPRINT_THRESHOLD", "0.75"))
+# 1:1 verification: threshold on raw cosine similarity.
+VERIFY_THRESHOLD = float(os.environ.get("VOICEPRINT_VERIFY_THRESHOLD", str(SIMILARITY_THRESHOLD)))
+# 1:N identification: absolute raw-cosine floor; defends against low-score false accept when N is small
+# (without this, softmax confidence is a relative rank measure and N=1 always matches).
+IDENTIFY_ABS_FLOOR = float(os.environ.get("VOICEPRINT_IDENTIFY_ABS_FLOOR", "0.55"))
+# 1:N identification: minimum top-1 over top-2 raw-cosine margin, used only when N >= 2.
+IDENTIFY_MARGIN = float(os.environ.get("VOICEPRINT_IDENTIFY_MARGIN", "0.08"))
+# Enrollment consistency: minimum cosine between a new segment and the user's existing voiceprint centroid.
+CONSISTENCY_THRESHOLD = float(os.environ.get("VOICEPRINT_CONSISTENCY_THRESHOLD", "0.45"))
+# Enrollment fusion: drop the bottom fraction of segments by cosine-to-centroid before fusing (0 disables).
+FUSION_TRIM_RATIO = float(os.environ.get("VOICEPRINT_FUSION_TRIM_RATIO", "0.1"))
+# Adaptive symmetric score normalization (S-norm/AS-norm). Off by default — enable only after
+# re-calibrating thresholds on the target domain, since it changes the score scale.
+USE_ASNORM = os.environ.get("VOICEPRINT_USE_ASNORM", "false").lower() in ("1", "true", "yes")
+AS_NORM_K = int(os.environ.get("VOICEPRINT_ASNORM_K", "200"))
+# Use Silero VAD for effective-speech-duration estimation in quality gating (falls back to energy).
+USE_SILERO_VAD = os.environ.get("VOICEPRINT_USE_SILERO_VAD", "true").lower() in ("1", "true", "yes")
+# Default speaker encoder backend: 'erres2netv2' (Chinese-strong, default) or 'ecapa' (fallback).
+ENCODER_NAME = os.environ.get("VOICEPRINT_ENCODER", "erres2netv2")
+ERES2NETV2_MODEL_ID = os.environ.get(
+    "VOICEPRINT_ERES2NETV2_MODEL", "iic/speech_eres2netv2_sv_zh-cn_16k-common"
+)
 SAMPLE_RATE = int(os.environ.get("VOICEPRINT_SAMPLE_RATE", "16000"))
 EMBEDDING_DIM = int(os.environ.get("VOICEPRINT_EMBEDDING_DIM", "192"))
 MODEL_NAME = os.environ.get("VOICEPRINT_MODEL_NAME", "speechbrain/spkrec-ecapa-voxceleb")
